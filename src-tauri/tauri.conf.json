@@ -37,22 +37,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-      "python-service.exe",
-      "config.json"
-    ]
+    "resources": []
   },
   "plugins": {
-    "shell": {
-      "open": true,
-      "scope": [
-        {
-          "name": "python-service",
-          "cmd": "./python-service.exe",
-          "args": true
-        }
-      ]
-    },
     "http": {
       "all": true,
       "request": true
