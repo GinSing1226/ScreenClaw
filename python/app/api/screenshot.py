@@ -1,0 +1,165 @@
+"""
+截图API
+"""
+import time
+import os
+from fastapi import APIRouter, Header
+
+from app.models.request import ScreenshotRequest
+from app.models.response import (
+    ScreenshotResponse,
+    ScreenshotData,
+    create_error_response
+)
+from app.services.config_service import config_service
+from app.services.process_service import process_service
+from app.services.log_service import log_service
+from app.platform.windows.capture import windows_capture
+from app.core.grid import GridRenderer
+from app.utils.image import (
+    compress_image,
+    image_to_base64,
+    save_image,
+    generate_screenshot_filename,
+    generate_data_dir
+)
+
+router = APIRouter()
+
+
+@router.post("/screenshot")
+async def take_screenshot(
+    request: ScreenshotRequest,
+    authorization: str = Header(None)
+):
+    """截图"""
+    start_time = time.time()
+
+    # 获取进程信息
+    process_info = process_service.get_process_by_id(request.process_id)
+    if not process_info:
+        log_service.log(
+            ai_app_type=request.ai_app_type,
+            session_id=request.session_id,
+            process_id=request.process_id,
+            process_name="",
+            instruction="screenshot",
+            params={},
+            result={"success": False, "message": "进程不存在"}
+        )
+        return create_error_response("PROCESS_NOT_FOUND")
+
+    # 检查进程是否被禁止
+    if config_service.is_process_blocked(process_info.process_name):
+        log_service.log(
+            ai_app_type=request.ai_app_type,
+            session_id=request.session_id,
+            process_id=request.process_id,
+            process_name=process_info.process_name,
+            instruction="screenshot",
+            params={},
+            result={"success": False, "message": "进程在禁止清单中"}
+        )
+        return create_error_response("PROCESS_BLOCKED")
+
+    # 获取窗口句柄
+    hwnd = process_service.get_hwnd_by_process_id(request.process_id)
+    if not hwnd:
+        log_service.log(
+            ai_app_type=request.ai_app_type,
+            session_id=request.session_id,
+            process_id=request.process_id,
+            process_name=process_info.process_name,
+            instruction="screenshot",
+            params={},
+            result={"success": False, "message": "无法获取窗口句柄"}
+        )
+        return create_error_response("SCREENSHOT_FAILED", "无法获取窗口句柄")
+
+    # 截图
+    result = windows_capture.capture(hwnd)
+    if not result.success or result.image is None:
+        log_service.log(
+            ai_app_type=request.ai_app_type,
+            session_id=request.session_id,
+            process_id=request.process_id,
+            process_name=process_info.process_name,
+            instruction="screenshot",
+            params={},
+            result={"success": False, "message": result.error}
+        )
+        return create_error_response("SCREENSHOT_FAILED", result.error)
+
+    image = result.image
+
+    # 绘制网格
+    if request.coordinate_type != "no":
+        config = config_service.get()
+
+        # 使用请求参数或默认值
+        grid_density = request.grid.density if request.grid else config.screenshot.default_grid_density
+        grid_opacity = request.grid.opacity if request.grid else config.screenshot.default_grid_opacity
+        grid_color = request.grid.color if request.grid else config.screenshot.default_grid_color
+
+        coord = request.coordinate
+        number_density = coord.number_density if coord else config.screenshot.default_number_density
+        number_decimal = coord.number_decimal if coord else config.screenshot.default_number_decimal
+        number_size = coord.number_size if coord else config.screenshot.default_number_size
+        number_color = coord.number_color if coord else config.screenshot.default_number_color
+        number_opacity = coord.number_opacity if coord else config.screenshot.default_number_opacity
+
+        renderer = GridRenderer(
+            density=grid_density,
+            grid_opacity=grid_opacity,
+            grid_color=grid_color,
+            number_density=number_density,
+            number_decimal=number_decimal,
+            number_size=number_size,
+            number_color=number_color,
+            number_opacity=number_opacity
+        )
+        image = renderer.draw_grid(image)
+
+    # 压缩图片
+    config = config_service.get()
+    image = compress_image(
+        image,
+        quality=config.screenshot.image_quality,
+        max_width=config.screenshot.max_image_width
+    )
+
+    # 保存图片
+    data_dir = generate_data_dir("data", request.ai_app_type, request.session_id)
+    filename = generate_screenshot_filename()
+    image_path = os.path.join(data_dir, filename)
+    save_image(image, image_path, config.screenshot.image_quality)
+
+    # 转换为base64
+    image_base64 = image_to_base64(image)
+
+    # 计算耗时
+    duration_ms = int((time.time() - start_time) * 1000)
+
+    # 记录日志
+    log_service.log(
+        ai_app_type=request.ai_app_type,
+        session_id=request.session_id,
+        process_id=request.process_id,
+        process_name=process_info.process_name,
+        instruction="screenshot",
+        params={
+            "coordinate_type": request.coordinate_type,
+            "grid": request.grid.model_dump() if request.grid else None
+        },
+        result={"success": True, "image_path": image_path},
+        duration_ms=duration_ms
+    )
+
+    return ScreenshotResponse(
+        success=True,
+        message="截图成功",
+        data=ScreenshotData(
+            image_path=os.path.abspath(image_path),
+            image_base64=image_base64
+        )
+    )

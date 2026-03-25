@@ -1,0 +1,61 @@
+{
+  "productName": "ScreenClaw",
+  "version": "1.0.0",
+  "identifier": "com.screenclaw.app",
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "ScreenClaw",
+        "width": 900,
+        "height": 700,
+        "resizable": true,
+        "center": true,
+        "visible": true
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "trayIcon": {
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": true
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": [
+      "python-service.exe",
+      "config.json"
+    ]
+  },
+  "plugins": {
+    "shell": {
+      "open": true,
+      "scope": [
+        {
+          "name": "python-service",
+          "cmd": "./python-service.exe",
+          "args": true
+        }
+      ]
+    },
+    "http": {
+      "all": true,
+      "request": true
+    }
+  }
+}
