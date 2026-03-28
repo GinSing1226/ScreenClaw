@@ -2,14 +2,13 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use std::process::{Command, Child};
-use std::time::Duration;
+use std::process::Child;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, Runtime, State, WindowEvent
+    Manager, WindowEvent
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
@@ -21,27 +20,146 @@ pub struct AppState {
     pub config: Mutex<Config>,
 }
 
-// 配置结构
-#[derive(Debug, Clone, Serialize, Deserialize)]
+// 配置结构 - 与Python AppConfig匹配
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     pub server: ServerConfig,
+    pub screenshot: ScreenshotConfig,
+    #[serde(default)]
+    pub input: InputConfig,
+    pub security: SecurityConfig,
+    #[serde(default)]
+    pub log: LogConfig,
+    pub ui: UIConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
+    #[serde(default = "default_port")]
     pub port: u16,
+    #[serde(default)]
+    pub host: String,
+    #[serde(default)]
     pub token: String,
+    #[serde(default)]
     pub local_ip: String,
+    #[serde(default = "default_true")]
+    pub auto_start: bool,
+    #[serde(default = "default_true")]
+    pub service_enabled: bool,
 }
 
-impl Default for Config {
+fn default_port() -> u16 { 12261 }
+fn default_true() -> bool { true }
+
+impl Default for ServerConfig {
     fn default() -> Self {
-        Config {
-            server: ServerConfig {
-                port: 12261,
-                token: String::new(),
-                local_ip: String::from("127.0.0.1"),
-            },
+        ServerConfig {
+            port: 12261,
+            host: "0.0.0.0".to_string(),
+            token: String::new(),
+            local_ip: "127.0.0.1".to_string(),
+            auto_start: true,
+            service_enabled: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScreenshotConfig {
+    #[serde(default = "default_coordinate_type")]
+    pub default_coordinate_type: String,
+    #[serde(default = "default_grid_density")]
+    pub default_grid_density: f32,
+    #[serde(default = "default_grid_opacity")]
+    pub default_grid_opacity: i32,
+    #[serde(default = "default_grid_color")]
+    pub default_grid_color: String,
+    #[serde(default = "default_number_density")]
+    pub default_number_density: i32,
+    #[serde(default = "default_number_decimal")]
+    pub default_number_decimal: i32,
+    #[serde(default = "default_number_size")]
+    pub default_number_size: i32,
+    #[serde(default = "default_number_color")]
+    pub default_number_color: String,
+    #[serde(default = "default_number_opacity")]
+    pub default_number_opacity: i32,
+    #[serde(default = "default_image_quality")]
+    pub image_quality: i32,
+    #[serde(default = "default_max_image_width")]
+    pub max_image_width: i32,
+}
+
+fn default_coordinate_type() -> String { "grid".to_string() }
+fn default_grid_density() -> f32 { 5.0 }
+fn default_grid_opacity() -> i32 { 50 }
+fn default_grid_color() -> String { "#00FF00".to_string() }
+fn default_number_density() -> i32 { 2 }
+fn default_number_decimal() -> i32 { 0 }
+fn default_number_size() -> i32 { 8 }
+fn default_number_color() -> String { "#00FF00".to_string() }
+fn default_number_opacity() -> i32 { 100 }
+fn default_image_quality() -> i32 { 85 }
+fn default_max_image_width() -> i32 { 1920 }
+
+impl Default for ScreenshotConfig {
+    fn default() -> Self {
+        ScreenshotConfig {
+            default_coordinate_type: default_coordinate_type(),
+            default_grid_density: default_grid_density(),
+            default_grid_opacity: default_grid_opacity(),
+            default_grid_color: default_grid_color(),
+            default_number_density: default_number_density(),
+            default_number_decimal: default_number_decimal(),
+            default_number_size: default_number_size(),
+            default_number_color: default_number_color(),
+            default_number_opacity: default_number_opacity(),
+            image_quality: default_image_quality(),
+            max_image_width: default_max_image_width(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct InputConfig {
+    #[serde(default = "default_newline_mapping")]
+    pub newline_mapping: std::collections::HashMap<String, String>,
+}
+
+fn default_newline_mapping() -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    map.insert("pc".to_string(), "shift+enter".to_string());
+    map.insert("mobile".to_string(), "enter".to_string());
+    map
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SecurityConfig {
+    #[serde(default)]
+    pub blocked_processes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LogConfig {
+    #[serde(default = "default_retention_days")]
+    pub retention_days: i32,
+}
+
+fn default_retention_days() -> i32 { 30 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UIConfig {
+    #[serde(default = "default_language")]
+    pub language: String,
+}
+
+fn default_language() -> String { "zh_CN".to_string() }
+
+impl Default for UIConfig {
+    fn default() -> Self {
+        UIConfig {
+            language: default_language(),
         }
     }
 }
@@ -61,14 +179,32 @@ fn main() {
             config: Mutex::new(Config::default()),
         }))
         .setup(|app| {
-            // 加载配置
-            let config = load_config().unwrap_or_default();
+            // 加载或创建配置
+            let config = load_or_create_config();
+
+            // 更新AppState中的配置
+            let state = app.state::<Arc<AppState>>();
+            tauri::async_runtime::block_on(async {
+                let mut app_config = state.config.lock().await;
+                *app_config = config.clone();
+            });
+
+            // 创建托盘菜单 - 根据语言设置显示不同文本
+            let language = config.ui.language.as_str();
+            let (show_text, quit_text) = match language {
+                "zh_CN" => ("显示窗口", "退出"),
+                "en_US" => ("Show Window", "Quit"),
+                _ => ("Show Window", "Quit"),
+            };
+            let show_item = MenuItem::with_id(app, "show", show_text, true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", quit_text, true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
             // 设置托盘图标
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
-                .menu(&app.handle())
-                .menu_on_left_click(false)
+                .menu(&menu)
+                .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| {
                     match event.id.as_ref() {
                         "show" => {
@@ -116,20 +252,101 @@ fn main() {
             commands::get_config,
             commands::update_config,
             commands::confirm_operation,
+            commands::regenerate_token,
+            commands::get_logs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
-fn load_config() -> Option<Config> {
-    let config_path = std::env::current_exe().ok()?
-        .parent()?
-        .join("config.json");
+/// 获取项目根目录
+fn get_project_root() -> std::path::PathBuf {
+    let exe_dir = std::env::current_exe()
+        .expect("Failed to get current exe path")
+        .parent()
+        .expect("Failed to get parent directory")
+        .to_path_buf();
+
+    // 开发模式：exe在 src-tauri/target/debug/
+    // exe_dir = src-tauri/target/debug/
+    // parent() = src-tauri/target/
+    // parent() = src-tauri/
+    // parent() = 项目根目录
+    exe_dir.parent()
+        .and_then(|p| p.parent())
+        .and_then(|p| p.parent())
+        .map(|p| p.to_path_buf())
+        .unwrap_or(exe_dir)
+}
+
+/// 获取data目录路径
+fn get_data_dir() -> std::path::PathBuf {
+    get_project_root().join("data")
+}
+
+/// 获取config.json路径
+fn get_config_path() -> std::path::PathBuf {
+    get_data_dir().join("config.json")
+}
+
+fn generate_token() -> String {
+    // 生成32字符的十六进制Token
+    format!("{:016x}{:016x}",
+        rand::random::<u64>(),
+        rand::random::<u64>()
+    )
+}
+
+fn get_local_ip() -> String {
+    // 获取本机局域网IP
+    use std::net::UdpSocket;
+    match UdpSocket::bind("0.0.0.0:0") {
+        Ok(socket) => {
+            if socket.connect("8.8.8.8:80").is_ok() {
+                if let Ok(addr) = socket.local_addr() {
+                    return addr.ip().to_string();
+                }
+            }
+        }
+        Err(_) => {}
+    }
+    "127.0.0.1".to_string()
+}
+
+fn load_or_create_config() -> Config {
+    let config_path = get_config_path();
 
     if config_path.exists() {
-        let content = std::fs::read_to_string(config_path).ok()?;
-        serde_json::from_str(&content).ok()
-    } else {
-        None
+        match std::fs::read_to_string(&config_path) {
+            Ok(content) => {
+                match serde_json::from_str(&content) {
+                    Ok(config) => return config,
+                    Err(e) => println!("Failed to parse config: {}", e),
+                }
+            }
+            Err(e) => println!("Failed to read config: {}", e),
+        }
     }
+
+    // 创建默认配置
+    let mut config = Config::default();
+    config.server.token = generate_token();
+    config.server.local_ip = get_local_ip();
+
+    // 保存配置
+    if let Some(parent) = config_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match serde_json::to_string_pretty(&config) {
+        Ok(json) => {
+            if let Err(e) = std::fs::write(&config_path, json) {
+                println!("Failed to save config: {}", e);
+            } else {
+                println!("Created default config at {:?}", config_path);
+            }
+        }
+        Err(e) => println!("Failed to serialize config: {}", e),
+    }
+
+    config
 }

@@ -142,7 +142,6 @@ def main():
     print(f"{'='*50}")
     print(f"  Local:   http://127.0.0.1:{port}")
     print(f"  Network: http://{config.server.local_ip}:{port}")
-    print(f"  Docs:    http://127.0.0.1:{port}/docs")
     # 只显示Token的首尾各4个字符
     token_display = f"{config.server.token[:4]}...{config.server.token[-4:]}" if len(config.server.token) > 8 else "***"
     print(f"  Token:   {token_display}")

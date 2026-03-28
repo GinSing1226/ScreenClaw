@@ -82,10 +82,14 @@ class TestImageProcessing:
         assert len(parts[0]) == 6  # hhmmss
         assert len(parts[1]) == 4  # rand4
 
-    def test_generate_data_dir(self, tmp_path):
+    def test_generate_data_dir(self, tmp_path, monkeypatch):
         """测试生成数据目录"""
+        # Mock get_project_root 来返回 tmp_path
+        from app.utils import image
+        monkeypatch.setattr(image, "get_project_root", lambda: tmp_path)
+
         data_dir = generate_data_dir(
-            str(tmp_path),
+            "data",  # base_dir 现在只用于命名，实际路径由 get_project_root 决定
             "claude_code",
             "session_001"
         )

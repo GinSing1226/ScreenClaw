@@ -2,6 +2,7 @@
 配置管理服务
 """
 import os
+import sys
 import json
 import secrets
 import socket
@@ -11,23 +12,53 @@ from typing import Optional
 from app.models.config import AppConfig
 
 
+def get_project_root() -> Path:
+    """获取项目根目录"""
+    # 优先从环境变量获取（开发模式）
+    if os.environ.get('SCREENCLAW_ROOT'):
+        return Path(os.environ['SCREENCLAW_ROOT'])
+
+    # 获取当前exe或脚本所在目录，然后向上一级找到项目根目录
+    if getattr(sys, 'frozen', False):
+        # 打包后的exe
+        exe_dir = Path(sys.executable).parent
+        # exe在 src-tauri/target/debug/ 或 release/ 目录下
+        # 项目根目录是 exe 的父目录的父目录的父目录
+        return exe_dir.parent.parent.parent
+    else:
+        # 开发模式：python/main.py 所在目录的父目录
+        return Path(__file__).parent.parent.parent.parent
+
+
+def get_data_dir() -> Path:
+    """获取data目录路径"""
+    return get_project_root() / "data"
+
+
 class ConfigService:
     """配置服务"""
 
     _instance: Optional['ConfigService'] = None
 
-    def __new__(cls, config_path: str = "config.json"):
+    def __new__(cls, config_path: str = None):
         """单例模式"""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self, config_path: str = "config.json"):
+    def __init__(self, config_path: str = None):
         if self._initialized:
             return
         self._initialized = True
-        self.config_path = config_path
+
+        # 如果未指定路径，使用data目录
+        if config_path is None:
+            data_dir = get_data_dir()
+            self.config_path = str(data_dir / "config.json")
+        else:
+            self.config_path = config_path
+
         self.config: AppConfig = self._load_or_create()
 
     def _load_or_create(self) -> AppConfig:
@@ -36,9 +67,18 @@ class ConfigService:
             try:
                 with open(self.config_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                return AppConfig(**data)
+                config = AppConfig(**data)
+                # 确保host不为空
+                if not config.server.host:
+                    config.server.host = "0.0.0.0"
+                return config
             except Exception as e:
                 print(f"加载配置失败: {e}，使用默认配置")
+
+        # 确保data目录存在
+        data_dir = os.path.dirname(self.config_path)
+        if data_dir and not os.path.exists(data_dir):
+            os.makedirs(data_dir, exist_ok=True)
 
         # 创建默认配置
         config = AppConfig()
@@ -96,6 +136,13 @@ class ConfigService:
     def verify_token(self, token: str) -> bool:
         """验证Token"""
         return token == self.config.server.token
+
+    def regenerate_token(self) -> str:
+        """重新生成Token"""
+        new_token = self._generate_token()
+        self.config.server.token = new_token
+        self.save()
+        return new_token
 
 
 # 全局配置服务实例

@@ -1,5 +1,5 @@
 [package]
-name = "screen-claw"
+name = "screenclaw"
 version = "1.0.0"
 description = "ScreenClaw - AI应用的可视化操作必备伴侣"
 authors = ["ScreenClaw Team"]
@@ -16,3 +16,4 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", features = ["json"] }
+rand = "0.8"

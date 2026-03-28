@@ -23,6 +23,9 @@ from app.utils.image import (
     generate_screenshot_filename,
     generate_data_dir
 )
+import win32gui
+import win32con
+import time
 
 router = APIRouter()
 
@@ -35,26 +38,26 @@ async def take_screenshot(
     """截图"""
     start_time = time.time()
 
-    # 获取进程信息
-    process_info = process_service.get_process_by_id(request.process_id)
+    # 获取窗口信息
+    process_info = process_service.get_process_by_window_id(request.window_id)
     if not process_info:
         log_service.log(
             ai_app_type=request.ai_app_type,
             session_id=request.session_id,
-            process_id=request.process_id,
+            window_id=request.window_id,
             process_name="",
             instruction="screenshot",
             params={},
-            result={"success": False, "message": "进程不存在"}
+            result={"success": False, "message": "窗口不存在"}
         )
-        return create_error_response("PROCESS_NOT_FOUND")
+        return create_error_response("WINDOW_NOT_FOUND")
 
     # 检查进程是否被禁止
     if config_service.is_process_blocked(process_info.process_name):
         log_service.log(
             ai_app_type=request.ai_app_type,
             session_id=request.session_id,
-            process_id=request.process_id,
+            window_id=request.window_id,
             process_name=process_info.process_name,
             instruction="screenshot",
             params={},
@@ -62,27 +65,42 @@ async def take_screenshot(
         )
         return create_error_response("PROCESS_BLOCKED")
 
-    # 获取窗口句柄
-    hwnd = process_service.get_hwnd_by_process_id(request.process_id)
-    if not hwnd:
-        log_service.log(
-            ai_app_type=request.ai_app_type,
-            session_id=request.session_id,
-            process_id=request.process_id,
-            process_name=process_info.process_name,
-            instruction="screenshot",
-            params={},
-            result={"success": False, "message": "无法获取窗口句柄"}
-        )
-        return create_error_response("SCREENSHOT_FAILED", "无法获取窗口句柄")
+    # 恢复窗口（如果需要）
+    if request.main_window_id:
+        is_minimized = win32gui.IsIconic(request.main_window_id)
+        is_visible = win32gui.IsWindowVisible(request.main_window_id)
+
+        print(f"[Screenshot] main_window_id={request.main_window_id}, is_minimized={is_minimized}, is_visible={is_visible}")
+
+        if is_minimized:
+            print("[Screenshot] Main window minimized, restoring...")
+            win32gui.ShowWindow(request.main_window_id, win32con.SW_RESTORE)
+            # 等待恢复完成
+            start = time.time()
+            restored = False
+            while time.time() - start < 2.0:
+                if win32gui.IsWindowVisible(request.main_window_id) and not win32gui.IsIconic(request.main_window_id):
+                    restored = True
+                    print(f"[Screenshot] Window restored in {time.time() - start:.2f}s")
+                    break
+                time.sleep(0.01)
+
+            if not restored:
+                print("[Screenshot] WARNING: Window restore timeout")
+            time.sleep(0.3)  # 等待窗口稳定
+
+        elif not is_visible:
+            print("[Screenshot] Main window not visible, showing...")
+            win32gui.ShowWindow(request.main_window_id, win32con.SW_SHOW)
+            time.sleep(0.3)
 
     # 截图
-    result = windows_capture.capture(hwnd)
+    result = windows_capture.capture(request.window_id)
     if not result.success or result.image is None:
         log_service.log(
             ai_app_type=request.ai_app_type,
             session_id=request.session_id,
-            process_id=request.process_id,
+            window_id=request.window_id,
             process_name=process_info.process_name,
             instruction="screenshot",
             params={},
@@ -128,8 +146,8 @@ async def take_screenshot(
         max_width=config.screenshot.max_image_width
     )
 
-    # 保存图片
-    data_dir = generate_data_dir("data", request.ai_app_type, request.session_id)
+    # 保存图片（使用 window_id 组织目录）
+    data_dir = generate_data_dir("data", request.ai_app_type, request.session_id, str(request.window_id))
     filename = generate_screenshot_filename()
     image_path = os.path.join(data_dir, filename)
     save_image(image, image_path, config.screenshot.image_quality)
@@ -144,7 +162,7 @@ async def take_screenshot(
     log_service.log(
         ai_app_type=request.ai_app_type,
         session_id=request.session_id,
-        process_id=request.process_id,
+        window_id=request.window_id,
         process_name=process_info.process_name,
         instruction="screenshot",
         params={

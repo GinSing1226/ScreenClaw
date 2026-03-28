@@ -86,17 +86,19 @@ class GridRenderer:
         color: Tuple[int, int, int, int]
     ):
         """绘制网格线"""
-        # 垂直线
-        x = 0
-        while x <= width:
+        # 垂直线（从0到100%）
+        percent_x = 0.0
+        while percent_x <= 100.0:
+            x = int(width * percent_x / 100)
             draw.line([(x, 0), (x, height)], fill=color, width=1)
-            x += step_x
+            percent_x += self.density
 
-        # 水平线
-        y = 0
-        while y <= height:
+        # 水平线（从0到100%）
+        percent_y = 0.0
+        while percent_y <= 100.0:
+            y = int(height * percent_y / 100)
             draw.line([(0, y), (width, y)], fill=color, width=1)
-            y += step_y
+            percent_y += self.density
 
     def _draw_coordinates(
         self,
@@ -112,12 +114,17 @@ class GridRenderer:
         text_step_x = step_x * self.number_density
         text_step_y = step_y * self.number_density
 
-        x = 0
+        # 使用百分比作为循环变量（0-100），避免累加误差
+        percent_step = self.density * self.number_density
+
         percent_x = 0.0
-        while x <= width:
-            y = 0
+        while percent_x <= 100.0:
+            x = int(width * percent_x / 100)
+
             percent_y = 0.0
-            while y <= height:
+            while percent_y <= 100.0:
+                y = int(height * percent_y / 100)
+
                 # 格式化坐标文本
                 text = self._format_coordinate(percent_x, percent_y)
 
@@ -138,11 +145,9 @@ class GridRenderer:
                 # 绘制文本
                 draw.text((pos_x, pos_y), text, fill=color, font=font)
 
-                y += text_step_y
-                percent_y += self.density * self.number_density
+                percent_y += percent_step
 
-            x += text_step_x
-            percent_x += self.density * self.number_density
+            percent_x += percent_step
 
     def _format_coordinate(self, x_percent: float, y_percent: float) -> str:
         """格式化坐标文本"""

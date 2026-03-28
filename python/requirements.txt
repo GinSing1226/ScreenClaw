@@ -12,6 +12,7 @@ pywin32>=305
 
 # 操作模拟
 pyautogui>=0.9.54
+pyperclip>=1.8.0
 
 # 打包
 pyinstaller>=6.0.0

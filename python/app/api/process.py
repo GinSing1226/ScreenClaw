@@ -1,11 +1,11 @@
 """
-进程管理API
+窗口管理API
 """
 from fastapi import APIRouter, Header
 
-from app.models.request import GetProcessListRequest
+from app.models.request import GetWindowListRequest
 from app.models.response import (
-    GetProcessListResponse,
+    GetWindowListResponse,
     ProcessInfo,
     create_error_response
 )
@@ -15,28 +15,32 @@ from app.services.log_service import log_service
 router = APIRouter()
 
 
-@router.post("/get_process_list")
-async def get_process_list(
-    request: GetProcessListRequest,
+@router.post("/get_window_list")
+async def get_window_list(
+    request: GetWindowListRequest,
     authorization: str = Header(None)
 ):
-    """获取进程列表"""
+    """获取窗口列表"""
     # 记录日志
     log_service.log(
         ai_app_type=request.ai_app_type,
         session_id=request.session_id,
-        process_id=0,
+        window_id=0,
         process_name="",
-        instruction="get_process_list",
+        instruction="get_window_list",
         params={"keyword": request.keyword},
         result={"success": True}
     )
 
-    # 获取进程列表
-    processes = process_service.get_process_list(request.keyword)
+    # 获取窗口列表
+    windows = process_service.get_process_list(
+        keyword=request.keyword,
+        include_children=request.include_children,
+        children_filter=request.children_filter
+    )
 
-    return GetProcessListResponse(
+    return GetWindowListResponse(
         success=True,
         message="获取成功",
-        data={"processes": processes}
+        data={"windows": windows}
     )

@@ -1,5 +1,7 @@
 //! HTTP客户端模块
 
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 
 /// API响应结构

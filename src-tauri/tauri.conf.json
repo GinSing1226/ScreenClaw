@@ -21,10 +21,6 @@
     ],
     "security": {
       "csp": null
-    },
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": true
     }
   },
   "bundle": {
@@ -39,10 +35,5 @@
     ],
     "resources": []
   },
-  "plugins": {
-    "http": {
-      "all": true,
-      "request": true
-    }
-  }
+  "plugins": {}
 }

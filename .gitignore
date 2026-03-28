@@ -35,9 +35,9 @@ yarn-debug.log*
 yarn-error.log*
 
 # Sensitive files - contain tokens and user data
-python/config.json
-python/logs/
-python/data/
+config.json
+logs/
+data/
 
 # IDE
 .idea/

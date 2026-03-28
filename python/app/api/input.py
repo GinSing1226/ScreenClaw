@@ -1,7 +1,9 @@
 """
 输入API - 文本输入、按键
+支持 background(无感) / hijack(劫持) 两种模式
 """
 import time
+import win32gui
 from fastapi import APIRouter, Header
 
 from app.models.request import InputTextRequest, PressKeyRequest
@@ -13,7 +15,7 @@ from app.services.config_service import config_service
 from app.services.process_service import process_service
 from app.services.log_service import log_service
 from app.platform.windows.input import windows_input
-from app.utils.coordinate import percent_to_absolute
+from app.utils.coordinate import restore_window_and_calc_coords
 
 router = APIRouter()
 
@@ -23,48 +25,80 @@ async def input_text(request: InputTextRequest, authorization: str = Header(None
     """输入文本"""
     start_time = time.time()
 
-    # 获取进程信息
-    process_info = process_service.get_process_by_id(request.process_id)
+    # 获取窗口信息
+    process_info = process_service.get_process_by_window_id(request.window_id)
     if not process_info:
         log_service.log(
             ai_app_type=request.ai_app_type,
             session_id=request.session_id,
-            process_id=request.process_id,
+            window_id=request.window_id,
             process_name="",
             instruction="input_text",
             params={"x": request.x, "y": request.y, "text": request.text[:50] + "..."},
-            result={"success": False, "message": "进程不存在"}
+            result={"success": False, "message": "窗口不存在"}
         )
-        return create_error_response("PROCESS_NOT_FOUND")
+        return create_error_response("WINDOW_NOT_FOUND")
 
     # 检查进程是否被禁止
     if config_service.is_process_blocked(process_info.process_name):
         return create_error_response("PROCESS_BLOCKED")
 
-    # 获取窗口句柄
-    hwnd = process_service.get_hwnd_by_process_id(request.process_id)
-    if not hwnd:
-        return create_error_response("INTERNAL_ERROR", "无法获取窗口句柄")
+    # hijack 模式需要用户确认
+    if request.action_method == "hijack":
+        try:
+            window_title = win32gui.GetWindowText(request.window_id) or "未知窗口"
+        except Exception:
+            window_title = "未知窗口"
 
-    # 获取窗口矩形并转换坐标
-    window_rect = process_service.get_window_rect(hwnd)
-    if not window_rect:
-        return create_error_response("INTERNAL_ERROR", "无法获取窗口矩形")
+        from app.services.confirm_service import ConfirmService
+        confirm_result = ConfirmService.request_confirm(
+            ai_app_type=request.ai_app_type,
+            window_title=window_title,
+            process_name=process_info.process_name,
+            operation="输入文本",
+            operation_detail=f"输入：{request.text[:50]}{'...' if len(request.text) > 50 else ''}"
+        )
 
-    abs_x, abs_y = percent_to_absolute(request.x, request.y, window_rect)
+        if not confirm_result.confirmed:
+            return create_error_response("USER_DENIED", "用户拒绝操作")
+
+    # 坐标计算（如果传了坐标）- 包含窗口恢复逻辑
+    physical_x = None
+    physical_y = None
+    virtual_x = None
+    virtual_y = None
+
+    if request.x is not None and request.y is not None:
+        coords = restore_window_and_calc_coords(
+            request.window_id, request.x, request.y, request.main_window_id
+        )
+        if not coords:
+            return create_error_response("INTERNAL_ERROR", "无法获取窗口矩形")
+        physical_x, physical_y, virtual_x, virtual_y = coords
 
     # 执行输入
-    inject_result = windows_input.input_text(hwnd, abs_x, abs_y, request.text)
+    inject_result = windows_input.input_text(
+        request.window_id,
+        physical_x, physical_y,
+        virtual_x, virtual_y,
+        request.text,
+        request.newline_key,
+        request.action_method
+    )
 
     duration_ms = int((time.time() - start_time) * 1000)
 
     log_service.log(
         ai_app_type=request.ai_app_type,
         session_id=request.session_id,
-        process_id=request.process_id,
+        window_id=request.window_id,
         process_name=process_info.process_name,
         instruction="input_text",
-        params={"x": request.x, "y": request.y, "text_length": len(request.text)},
+        params={
+            "x": request.x, "y": request.y,
+            "text_length": len(request.text),
+            "action_method": request.action_method
+        },
         result={"success": inject_result.success, "message": inject_result.error},
         duration_ms=duration_ms
     )
@@ -80,41 +114,85 @@ async def press_key(request: PressKeyRequest, authorization: str = Header(None))
     """按键"""
     start_time = time.time()
 
-    # 获取进程信息
-    process_info = process_service.get_process_by_id(request.process_id)
+    # 获取窗口信息
+    process_info = process_service.get_process_by_window_id(request.window_id)
     if not process_info:
         log_service.log(
             ai_app_type=request.ai_app_type,
             session_id=request.session_id,
-            process_id=request.process_id,
+            window_id=request.window_id,
             process_name="",
             instruction="press_key",
             params={"key": request.key},
-            result={"success": False, "message": "进程不存在"}
+            result={"success": False, "message": "窗口不存在"}
         )
-        return create_error_response("PROCESS_NOT_FOUND")
+        return create_error_response("WINDOW_NOT_FOUND")
 
     # 检查进程是否被禁止
     if config_service.is_process_blocked(process_info.process_name):
         return create_error_response("PROCESS_BLOCKED")
 
-    # 获取窗口句柄
-    hwnd = process_service.get_hwnd_by_process_id(request.process_id)
-    if not hwnd:
-        return create_error_response("INTERNAL_ERROR", "无法获取窗口句柄")
+    # hijack 模式需要用户确认
+    if request.action_method == "hijack":
+        try:
+            window_title = win32gui.GetWindowText(request.window_id) or "未知窗口"
+        except Exception:
+            window_title = "未知窗口"
+
+        from app.services.confirm_service import ConfirmService
+        confirm_result = ConfirmService.request_confirm(
+            ai_app_type=request.ai_app_type,
+            window_title=window_title,
+            process_name=process_info.process_name,
+            operation="按键",
+            operation_detail=f"按键：{request.key}"
+        )
+
+        if not confirm_result.confirmed:
+            return create_error_response("USER_DENIED", "用户拒绝操作")
+
+    # 可选的坐标计算（如果传了 x, y）- 包含窗口恢复逻辑
+    physical_x = None
+    physical_y = None
+    virtual_x = None
+    virtual_y = None
+
+    if request.x is not None and request.y is not None:
+        coords = restore_window_and_calc_coords(
+            request.window_id, request.x, request.y, request.main_window_id
+        )
+        if not coords:
+            return create_error_response("INTERNAL_ERROR", "无法获取窗口矩形")
+        physical_x, physical_y, virtual_x, virtual_y = coords
 
     # 执行按键
-    inject_result = windows_input.key_press(hwnd, request.key)
+    inject_result = windows_input.key_press(
+        request.window_id,
+        request.key,
+        physical_x=physical_x,
+        physical_y=physical_y,
+        virtual_x=virtual_x,
+        virtual_y=virtual_y,
+        duration_ms=request.duration_ms,
+        action_method=request.action_method,
+        non_blocking=False  # 单独指令阻塞等待
+    )
 
     duration_ms = int((time.time() - start_time) * 1000)
 
     log_service.log(
         ai_app_type=request.ai_app_type,
         session_id=request.session_id,
-        process_id=request.process_id,
+        window_id=request.window_id,
         process_name=process_info.process_name,
         instruction="press_key",
-        params={"key": request.key},
+        params={
+            "key": request.key,
+            "x": request.x,
+            "y": request.y,
+            "duration_ms": request.duration_ms,
+            "action_method": request.action_method
+        },
         result={"success": inject_result.success, "message": inject_result.error},
         duration_ms=duration_ms
     )

@@ -1,8 +1,11 @@
 {
-  "name": "screen-claw",
+  "name": "screenclaw",
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "skills": [
+    { "name": "screenclaw", "path": "skills/screenclaw" }
+  ],
   "scripts": {
     "dev": "vite",
     "build": "vite build",

@@ -1,19 +1,32 @@
 """
 Windows操作注入实现
-使用 PostMessage + SendInput (pyautogui) 双重方案
+支持 background(无感) / hijack(劫持) 两种模式
+所有操作通过子进程隔离执行
+
+坐标说明：
+- virtual_x/y: 窗口客户端区域的原始虚拟坐标（未经 DPI 缩放）
+- physical_x/y: DPI 缩放后的物理坐标（已弃用于 background 模式）
+
+Background 模式必须使用 virtual 坐标：
+- PostMessage/SendMessage 的 lParam 需要的是客户端区域的原始坐标
+- 在 DPI 缩放环境（如 4K 150%）中，physical 坐标会超出客户区实际范围
+- 例如：4K 150% 时，virtual=(100, 100) 会变成 physical=(150, 150)，导致点击位置错误
+
+Hijack 模式使用 virtual 坐标转屏幕坐标：
+- SetCursorPos 需要屏幕绝对坐标
+- 通过 ClientToScreen(virtual_x, virtual_y) 转换
 """
-import ctypes
-from ctypes import wintypes
-from typing import Optional, Tuple, Callable
+from typing import Optional, Tuple, List
 from dataclasses import dataclass
 import time
+import subprocess
+import sys
+import base64
+import ctypes
 
-# 延迟导入 pyautogui
-PYAUTOGUI_AVAILABLE = True
-try:
-    import pyautogui
-except ImportError:
-    PYAUTOGUI_AVAILABLE = False
+import win32gui
+import win32api
+import win32con
 
 
 @dataclass
@@ -21,442 +34,1013 @@ class InjectResult:
     """操作注入结果"""
     success: bool
     error: Optional[str]
-    method: str  # "postmessage" | "sendinput"
-    need_confirm: bool  # 是否需要用户确认
+    method: str  # "background" | "hijack"
+
+
+# 修饰键 VK 集合
+MODIFIER_VKS = {0x11, 0x12, 0x10, 0x5B}  # Ctrl, Alt, Shift, Win
 
 
 class WindowsInputInjector:
-    """Windows操作注入"""
+    """Windows操作注入 - background/hijack 双模式 + 子进程隔离"""
 
-    # Windows消息常量
-    WM_LBUTTONDOWN = 0x0201
-    WM_LBUTTONUP = 0x0202
-    WM_RBUTTONDOWN = 0x0204
-    WM_RBUTTONUP = 0x0205
-    WM_MOUSEMOVE = 0x0200
-    WM_KEYDOWN = 0x0100
-    WM_KEYUP = 0x0101
-    WM_CHAR = 0x0102
+    # 按键名 → VK码
+    _key_map = {
+        "enter": 0x0D, "return": 0x0D,
+        "tab": 0x09,
+        "escape": 0x1B, "esc": 0x1B,
+        "space": 0x20,
+        "backspace": 0x08, "bs": 0x08,
+        "delete": 0x2E, "del": 0x2E,
+        "insert": 0x2D, "ins": 0x2D,
+        "home": 0x24,
+        "end": 0x23,
+        "pageup": 0x21, "pgup": 0x21,
+        "pagedown": 0x22, "pgdn": 0x22,
+        "up": 0x26,
+        "down": 0x28,
+        "left": 0x25,
+        "right": 0x27,
+        "f1": 0x70, "f2": 0x71, "f3": 0x72, "f4": 0x73,
+        "f5": 0x74, "f6": 0x75, "f7": 0x76, "f8": 0x77,
+        "f9": 0x78, "f10": 0x79, "f11": 0x7A, "f12": 0x7B,
+        "ctrl": 0x11, "control": 0x11,
+        "alt": 0x12,
+        "shift": 0x10,
+        "win": 0x5B, "windows": 0x5B,
+        "plus": 0xBB, "equal": 0xBB,
+        "minus": 0xBD,
+        "lbracket": 0xDB, "[": 0xDB,
+        "rbracket": 0xDD, "]": 0xDD,
+        "semicolon": 0xBA,
+        "quote": 0xDE,
+        "backslash": 0xDC, "\\": 0xDC,
+        "comma": 0xBC,
+        "period": 0xBE,
+        "slash": 0xBF,
+    }
 
-    MK_LBUTTON = 0x0001
-    MK_RBUTTON = 0x0002
+    # ============ 公共方法 ============
 
-    def __init__(self, confirm_callback: Optional[Callable[[], bool]] = None):
-        self.user32 = ctypes.windll.user32
-        self.confirm_callback = confirm_callback
+    def click(self, hwnd: int, physical_x: int, physical_y: int,
+              virtual_x: int, virtual_y: int,
+              action_method: str = "background") -> InjectResult:
+        # 传递 virtual 坐标，子进程内处理最小化恢复和坐标计算
+        if action_method == "hijack":
+            if self._hijack_click(hwnd, virtual_x, virtual_y):
+                return InjectResult(True, None, "hijack")
+            return InjectResult(False, "点击操作失败", "hijack")
+        if self._background_click(hwnd, virtual_x, virtual_y):
+            return InjectResult(True, None, "background")
+        return InjectResult(False, "点击操作失败", "background")
 
-        # 按键映射
-        self._key_map = {
-            "enter": 0x0D,
-            "tab": 0x09,
-            "escape": 0x1B,
-            "esc": 0x1B,
-            "space": 0x20,
-            "backspace": 0x08,
-            "delete": 0x2E,
-            "arrowup": 0x26,
-            "arrowdown": 0x28,
-            "arrowleft": 0x25,
-            "arrowright": 0x27,
-            "f1": 0x70,
-            "f2": 0x71,
-            "f3": 0x72,
-            "f4": 0x73,
-            "f5": 0x74,
-            "f6": 0x75,
-            "f7": 0x76,
-            "f8": 0x77,
-            "f9": 0x78,
-            "f10": 0x79,
-            "f11": 0x7A,
-            "f12": 0x7B,
-            "ctrl": 0x11,
-            "alt": 0x12,
-            "shift": 0x10,
-            "win": 0x5B,
-        }
+    def right_click(self, hwnd: int, physical_x: int, physical_y: int,
+                    virtual_x: int, virtual_y: int,
+                    action_method: str = "background") -> InjectResult:
+        if action_method == "hijack":
+            screen_x, screen_y = self._client_to_screen(hwnd, virtual_x, virtual_y)
+            if self._hijack_right_click(hwnd, screen_x, screen_y):
+                return InjectResult(True, None, "hijack")
+            return InjectResult(False, "右键操作失败", "hijack")
+        # background 使用 virtual 坐标
+        if self._background_right_click(hwnd, virtual_x, virtual_y):
+            return InjectResult(True, None, "background")
+        return InjectResult(False, "右键操作失败", "background")
 
-    def click(self, hwnd: int, x: int, y: int) -> InjectResult:
-        """点击操作"""
-        # 方案1: PostMessage
-        if self._postmessage_click(hwnd, x, y):
-            return InjectResult(
-                success=True,
-                error=None,
-                method="postmessage",
-                need_confirm=False
-            )
+    def long_press(self, hwnd: int, physical_x: int, physical_y: int,
+                   virtual_x: int, virtual_y: int, duration_ms: int,
+                   action_method: str = "background") -> InjectResult:
+        if action_method == "hijack":
+            screen_x, screen_y = self._client_to_screen(hwnd, virtual_x, virtual_y)
+            if self._hijack_long_press(hwnd, screen_x, screen_y, duration_ms):
+                return InjectResult(True, None, "hijack")
+            return InjectResult(False, "长按操作失败", "hijack")
+        # background 使用 virtual 坐标
+        if self._background_long_press(hwnd, virtual_x, virtual_y, duration_ms):
+            return InjectResult(True, None, "background")
+        return InjectResult(False, "长按操作失败", "background")
 
-        # 方案2: SendInput (需要确认)
-        if not self._request_confirm():
-            return InjectResult(
-                success=False,
-                error="用户拒绝操作",
-                method="",
-                need_confirm=True
-            )
+    def swipe(self, hwnd: int,
+              physical_sx: int, physical_sy: int, physical_ex: int, physical_ey: int,
+              virtual_sx: int, virtual_sy: int, virtual_ex: int, virtual_ey: int,
+              action_method: str = "background") -> InjectResult:
+        if action_method == "hijack":
+            ss = self._client_to_screen(hwnd, virtual_sx, virtual_sy)
+            se = self._client_to_screen(hwnd, virtual_ex, virtual_ey)
+            if self._hijack_swipe(hwnd, ss[0], ss[1], se[0], se[1]):
+                return InjectResult(True, None, "hijack")
+            return InjectResult(False, "滑动操作失败", "hijack")
+        # background 使用 virtual 坐标（与 click 一致，修复 DPI 缩放问题）
+        if self._background_swipe(hwnd, virtual_sx, virtual_sy, virtual_ex, virtual_ey):
+            return InjectResult(True, None, "background")
+        return InjectResult(False, "滑动操作失败", "background")
 
-        if self._sendinput_click(x, y):
-            return InjectResult(
-                success=True,
-                error=None,
-                method="sendinput",
-                need_confirm=True
-            )
+    def scroll(self, hwnd: int, physical_x: int, physical_y: int,
+               virtual_x: int, virtual_y: int, delta: int,
+               action_method: str = "background") -> InjectResult:
+        if action_method == "hijack":
+            screen_x, screen_y = self._client_to_screen(hwnd, virtual_x, virtual_y)
+            if self._hijack_scroll(hwnd, screen_x, screen_y, delta):
+                return InjectResult(True, None, "hijack")
+            return InjectResult(False, "滚动操作失败", "hijack")
+        if self._background_scroll(hwnd, virtual_x, virtual_y, delta):
+            return InjectResult(True, None, "background")
+        return InjectResult(False, "滚动操作失败", "background")
 
-        return InjectResult(
-            success=False,
-            error="点击操作失败",
-            method="",
-            need_confirm=True
-        )
+    def hover(self, hwnd: int, physical_x: int, physical_y: int,
+              virtual_x: int, virtual_y: int, duration_ms: int,
+              action_method: str = "background") -> InjectResult:
+        """鼠标悬浮 - 移动到目标位置并停留 duration_ms
 
-    def right_click(self, hwnd: int, x: int, y: int) -> InjectResult:
-        """右键点击"""
-        if self._postmessage_right_click(hwnd, x, y):
-            return InjectResult(
-                success=True,
-                error=None,
-                method="postmessage",
-                need_confirm=False
-            )
+        半阻塞模式：等待鼠标到位（100ms）后返回，hover 持续时间在后台继续执行
 
-        if not self._request_confirm():
-            return InjectResult(
-                success=False,
-                error="用户拒绝操作",
-                method="",
-                need_confirm=True
-            )
+        Args:
+            hwnd: 窗口句柄
+            physical_x/y: 物理坐标（已弃用，保留兼容）
+            virtual_x/y: 虚拟坐标
+            duration_ms: 停留时长（毫秒）
+            action_method: background / hijack
+        """
+        if action_method == "hijack":
+            screen_x, screen_y = self._client_to_screen(hwnd, virtual_x, virtual_y)
+            # 半阻塞：等待鼠标到位后再返回
+            success = self._hijack_hover(hwnd, screen_x, screen_y, duration_ms, semi_blocking=True)
+            if success:
+                return InjectResult(True, None, "hijack")
+            return InjectResult(False, "悬浮操作失败", "hijack")
+        # background 也是半阻塞
+        success = self._background_hover(hwnd, virtual_x, virtual_y, duration_ms, semi_blocking=True)
+        if success:
+            return InjectResult(True, None, "background")
+        return InjectResult(False, "悬浮操作失败", "background")
 
-        if self._sendinput_right_click(x, y):
-            return InjectResult(
-                success=True,
-                error=None,
-                method="sendinput",
-                need_confirm=True
-            )
+    def input_text(self, hwnd: int, physical_x: int = None, physical_y: int = None,
+                   virtual_x: int = None, virtual_y: int = None, text: str = None, newline_key: str = None,
+                   action_method: str = "background") -> InjectResult:
+        """输入文本 - 支持可选坐标
 
-        return InjectResult(
-            success=False,
-            error="右键操作失败",
-            method="",
-            need_confirm=True
-        )
-
-    def long_press(self, hwnd: int, x: int, y: int, duration_ms: int) -> InjectResult:
-        """长按操作"""
-        if self._postmessage_long_press(hwnd, x, y, duration_ms):
-            return InjectResult(
-                success=True,
-                error=None,
-                method="postmessage",
-                need_confirm=False
-            )
-
-        if not self._request_confirm():
-            return InjectResult(
-                success=False,
-                error="用户拒绝操作",
-                method="",
-                need_confirm=True
-            )
-
-        if self._sendinput_long_press(x, y, duration_ms):
-            return InjectResult(
-                success=True,
-                error=None,
-                method="sendinput",
-                need_confirm=True
-            )
-
-        return InjectResult(
-            success=False,
-            error="长按操作失败",
-            method="",
-            need_confirm=True
-        )
-
-    def swipe(
-        self,
-        hwnd: int,
-        start_x: int,
-        start_y: int,
-        end_x: int,
-        end_y: int
-    ) -> InjectResult:
-        """滑动操作"""
-        if self._postmessage_swipe(hwnd, start_x, start_y, end_x, end_y):
-            return InjectResult(
-                success=True,
-                error=None,
-                method="postmessage",
-                need_confirm=False
-            )
-
-        if not self._request_confirm():
-            return InjectResult(
-                success=False,
-                error="用户拒绝操作",
-                method="",
-                need_confirm=True
-            )
-
-        if self._sendinput_swipe(start_x, start_y, end_x, end_y):
-            return InjectResult(
-                success=True,
-                error=None,
-                method="sendinput",
-                need_confirm=True
-            )
-
-        return InjectResult(
-            success=False,
-            error="滑动操作失败",
-            method="",
-            need_confirm=True
-        )
-
-    def key_press(self, hwnd: int, key: str) -> InjectResult:
-        """按键操作"""
-        if self._postmessage_key_press(hwnd, key):
-            return InjectResult(
-                success=True,
-                error=None,
-                method="postmessage",
-                need_confirm=False
-            )
-
-        if not self._request_confirm():
-            return InjectResult(
-                success=False,
-                error="用户拒绝操作",
-                method="",
-                need_confirm=True
-            )
-
-        if self._sendinput_key_press(key):
-            return InjectResult(
-                success=True,
-                error=None,
-                method="sendinput",
-                need_confirm=True
-            )
-
-        return InjectResult(
-            success=False,
-            error="按键操作失败",
-            method="",
-            need_confirm=True
-        )
-
-    def input_text(self, hwnd: int, x: int, y: int, text: str) -> InjectResult:
-        """输入文本"""
-        # 先点击
-        click_result = self.click(hwnd, x, y)
-        if not click_result.success:
-            return click_result
-
-        time.sleep(0.1)
-
-        # 输入文本
-        for char in text:
-            if char == '\n':
-                # 换行处理
-                if self._postmessage_key_press(hwnd, "enter"):
-                    continue
-                if not self._request_confirm():
-                    return InjectResult(
-                        success=False,
-                        error="用户拒绝操作",
-                        method="",
-                        need_confirm=True
-                    )
-                self._sendinput_key_press("enter")
+        Args:
+            hwnd: 窗口句柄
+            physical_x/y: 可选，物理坐标（已弃用，保留兼容）
+            virtual_x/y: 可选，虚拟坐标（background/hijack 都使用）
+            text: 输入文本
+            newline_key: 换行键
+            action_method: background / hijack
+        """
+        if action_method == "hijack":
+            # hijack 需要屏幕坐标
+            if virtual_x is not None and virtual_y is not None:
+                screen_x, screen_y = self._client_to_screen(hwnd, virtual_x, virtual_y)
+                if self._hijack_input_text(hwnd, screen_x, screen_y, text):
+                    return InjectResult(True, None, "hijack")
             else:
-                # 普通字符
-                self._postmessage_char(hwnd, char)
+                # 无坐标 hijack，直接执行
+                if self._hijack_input_text(hwnd, None, None, text):
+                    return InjectResult(True, None, "hijack")
+            return InjectResult(False, "输入文本失败", "hijack")
+        # background 使用 virtual 坐标
+        if virtual_x is not None and virtual_y is not None:
+            if self._background_input_text(hwnd, virtual_x, virtual_y, text, newline_key):
+                return InjectResult(True, None, "background")
+        else:
+            # 无坐标 background，直接输入
+            if self._background_input_text(hwnd, None, None, text, newline_key):
+                return InjectResult(True, None, "background")
+        return InjectResult(False, "输入文本失败", "background")
 
-        return InjectResult(
-            success=True,
-            error=None,
-            method="postmessage",
-            need_confirm=False
-        )
+    def key_press(self, hwnd: int, key: str,
+                  physical_x: int = None, physical_y: int = None,
+                  virtual_x: int = None, virtual_y: int = None,
+                  duration_ms: int = 0, action_method: str = "background",
+                  non_blocking: bool = False) -> InjectResult:
+        """按键操作
 
-    # ============ PostMessage 实现 ============
+        Args:
+            hwnd: 窗口句柄
+            key: 按键，空格分隔如 "ctrl c"
+            physical_x/y: 可选，先点击的物理坐标（已弃用，保留兼容）
+            virtual_x/y: 可选，先点击的虚拟坐标（background/hijack 都使用）
+            duration_ms: 按住时长，0=立即释放
+            action_method: background / hijack
+            non_blocking: True 时用 Popen（不等待完成），用于 batch 并发
+        """
+        if action_method == "hijack":
+            if self._hijack_key_press(hwnd, key, virtual_x, virtual_y,
+                                      duration_ms, non_blocking):
+                return InjectResult(True, None, "hijack")
+            return InjectResult(False, "按键操作失败", "hijack")
+        # background 使用 virtual 坐标
+        if self._background_key_press(hwnd, key, virtual_x, virtual_y,
+                                      duration_ms, non_blocking):
+            return InjectResult(True, None, "background")
+        return InjectResult(False, "按键操作失败", "background")
 
-    def _make_lparam(self, x: int, y: int) -> int:
-        """生成LPARAM"""
-        return (y << 16) | (x & 0xFFFF)
+    # ============ background 实现（无感操作）============
 
-    def _postmessage_click(self, hwnd: int, x: int, y: int) -> bool:
-        """PostMessage点击"""
-        try:
-            lParam = self._make_lparam(x, y)
-            self.user32.PostMessageW(hwnd, self.WM_LBUTTONDOWN, self.MK_LBUTTON, lParam)
-            self.user32.PostMessageW(hwnd, self.WM_LBUTTONUP, 0, lParam)
-            return True
-        except Exception:
+    def _background_click(self, hwnd: int, x: int, y: int) -> bool:
+        """Background 点击 - 使用 virtual 坐标（API层已处理最小化恢复）"""
+        code = f'''
+import win32gui, win32api, win32con
+
+hwnd = {hwnd}
+x = {x}
+y = {y}
+
+# API 层已经处理了最小化恢复，直接 PostMessage
+lParam = win32api.MAKELONG(x, y)
+print("[BackgroundClick] PostMessage to hwnd=%d, client=(%d, %d)" % (hwnd, x, y))
+win32gui.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, 0x0001, lParam)
+win32gui.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lParam)
+print("[BackgroundClick] Done")
+'''
+        return self._run_subprocess(code, timeout=5)
+
+    def _background_right_click(self, hwnd: int, x: int, y: int) -> bool:
+        code = f'''
+import win32gui, win32api, win32con, time
+hwnd, x, y = {hwnd}, {x}, {y}
+lParam = win32api.MAKELONG(x, y)
+win32gui.PostMessage(hwnd, win32con.WM_RBUTTONDOWN, 0x0002, lParam)
+time.sleep(0.05)
+win32gui.PostMessage(hwnd, win32con.WM_RBUTTONUP, 0, lParam)
+'''
+        return self._run_subprocess(code, timeout=5)
+
+    def _background_long_press(self, hwnd: int, x: int, y: int, duration_ms: int) -> bool:
+        code = f'''
+import win32gui, win32api, win32con, time
+hwnd, x, y, duration_ms = {hwnd}, {x}, {y}, {duration_ms}
+lParam = win32api.MAKELONG(x, y)
+win32gui.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, 0x0001, lParam)
+time.sleep(duration_ms / 1000)
+win32gui.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lParam)
+'''
+        return self._run_subprocess(code, timeout=max(10, duration_ms / 1000 + 5))
+
+    def _background_swipe(self, hwnd: int, sx: int, sy: int, ex: int, ey: int) -> bool:
+        """Background 滑动 - 10步插值，使用 virtual 坐标"""
+        code = f'''
+import win32gui, win32api, win32con, time
+
+hwnd = {hwnd}
+sx = {sx}
+sy = {sy}
+ex = {ex}
+ey = {ey}
+
+lParam_start = win32api.MAKELONG(sx, sy)
+win32gui.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, 0x0001, lParam_start)
+time.sleep(0.05)
+
+# 分步移动
+steps = 10
+duration = 0.3
+step_delay = duration / steps
+
+for i in range(1, steps + 1):
+    progress = i / steps
+    current_x = int(sx + (ex - sx) * progress)
+    current_y = int(sy + (ey - sy) * progress)
+    lParam = win32api.MAKELONG(current_x, current_y)
+    win32gui.PostMessage(hwnd, win32con.WM_MOUSEMOVE, 0x0001, lParam)
+    time.sleep(step_delay)
+
+lParam_end = win32api.MAKELONG(ex, ey)
+win32gui.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lParam_end)
+'''
+        return self._run_subprocess(code, timeout=10)
+
+    def _background_scroll(self, hwnd: int, virtual_x: int, virtual_y: int, delta: int) -> bool:
+        """PostMessage WM_MOUSEWHEEL，lParam 使用屏幕坐标"""
+        code = f'''
+import win32gui, win32api, win32con
+
+hwnd = {hwnd}
+delta = {delta}
+
+# 客户区虚拟坐标 → 屏幕坐标
+screen_x, screen_y = win32gui.ClientToScreen(hwnd, ({virtual_x}, {virtual_y}))
+lParam = win32api.MAKELONG(screen_x, screen_y)
+wParam = (delta << 16) & 0xFFFF0000
+win32gui.PostMessage(hwnd, win32con.WM_MOUSEWHEEL, wParam, lParam)
+'''
+        return self._run_subprocess(code, timeout=5)
+
+    def _background_hover(self, hwnd: int, x: int, y: int, duration_ms: int,
+                         semi_blocking: bool = False) -> bool:
+        """Background 鼠标悬浮 - 只发送 WM_MOUSEMOVE（不按下鼠标）"""
+        code = f'''
+import win32gui, win32api, win32con, time
+
+hwnd = {hwnd}
+x = {x}
+y = {y}
+duration_ms = {duration_ms}
+
+# 只发送 WM_MOUSEMOVE，不按下鼠标
+lParam = win32api.MAKELONG(x, y)
+win32gui.PostMessage(hwnd, win32con.WM_MOUSEMOVE, 0, lParam)
+
+# 多发送几次增强效果
+for _ in range(3):
+    time.sleep(0.01)
+    win32gui.PostMessage(hwnd, win32con.WM_MOUSEMOVE, 0, lParam)
+
+# 停留指定时长
+if duration_ms > 0:
+    time.sleep(duration_ms / 1000.0)
+'''
+        timeout = max(5, duration_ms / 1000 + 5) if duration_ms > 0 else 5
+        return self._run_subprocess(code, timeout=int(timeout), semi_blocking=semi_blocking)
+
+    def _background_input_text(self, hwnd: int, x: int, y: int, text: str, newline_key: str) -> bool:
+        """PostMessage点击 → SendMessage WM_CHAR逐字符 + 换行键
+
+        支持 None 坐标：无坐标时不点击，直接输入文本
+        换行处理：根据 newline_key 参数模拟换行按键（默认 shift enter）
+        """
+        # 解析换行键（如 "shift enter" → [{0x10}, {0x0D}]）
+        newline_parts = newline_key.strip().split()
+        newline_vks = []
+        for part in newline_parts:
+            part_lower = part.lower()
+            if part_lower in self._key_map:
+                newline_vks.append(self._key_map[part_lower])
+            elif len(part) == 1:
+                newline_vks.append(ord(part.upper()))
+
+        newline_vks_b64 = base64.b64encode(str(newline_vks).encode('utf-8')).decode('ascii')
+        text_b64 = base64.b64encode(text.encode('utf-8')).decode('ascii')
+
+        # 判断是否有坐标
+        has_coord = x is not None and y is not None
+
+        code = f'''
+import win32gui, win32api, win32con, time, base64, ctypes
+
+hwnd = {hwnd}
+has_coord = {has_coord}
+text = base64.b64decode("{text_b64}").decode("utf-8")
+newline_vks = eval(base64.b64decode("{newline_vks_b64}").decode("utf-8"))
+
+# 如果有坐标，PostMessage 点击获取焦点
+if has_coord:
+    x, y = {x}, {y}
+    print("[BgInputText] Clicking at client coords=(%d, %d), hwnd=%d" % (x, y, hwnd))
+    lParam = win32api.MAKELONG(x, y)
+    win32gui.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, 0x0001, lParam)
+    win32gui.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lParam)
+    time.sleep(0.1)
+    print("[BgInputText] Click done")
+
+# 逐字符发送
+for char in text:
+    if char == '\\n':
+        # 换行：keybd_event 模拟按键（短暂，影响范围可控）
+        for vk in newline_vks:
+            scan = ctypes.windll.user32.MapVirtualKeyW(vk, 0)
+            ctypes.windll.user32.keybd_event(vk, scan, 0, 0)
+            time.sleep(0.02)
+        for vk in reversed(newline_vks):
+            scan = ctypes.windll.user32.MapVirtualKeyW(vk, 0)
+            ctypes.windll.user32.keybd_event(vk, scan, 2, 0)
+            time.sleep(0.02)
+    else:
+        char_code = ord(char)
+        vk = ord(char.upper()) if char.isalpha() else char_code
+        scan = ctypes.windll.user32.MapVirtualKeyW(vk, 0)
+        lParam_char = (scan << 16) | 1
+        win32gui.SendMessage(hwnd, win32con.WM_CHAR, char_code, lParam_char)
+    time.sleep(0.03)
+'''
+        timeout = max(30, len(text) * 0.05 + 5)
+        return self._run_subprocess(code, timeout=int(timeout))
+
+    def _background_key_press(self, hwnd: int, key: str,
+                              physical_x: int = None, physical_y: int = None,
+                              virtual_x: int = None, virtual_y: int = None,
+                              duration_ms: int = 0, non_blocking: bool = False) -> bool:
+        """混合方案: keybd_event修饰键 + SendMessage主键"""
+        parsed = self._parse_keys(key)
+        if parsed is None:
             return False
 
-    def _postmessage_right_click(self, hwnd: int, x: int, y: int) -> bool:
-        """PostMessage右键"""
-        try:
-            lParam = self._make_lparam(x, y)
-            self.user32.PostMessageW(hwnd, self.WM_RBUTTONDOWN, self.MK_RBUTTON, lParam)
-            self.user32.PostMessageW(hwnd, self.WM_RBUTTONUP, 0, lParam)
-            return True
-        except Exception:
+        modifiers, main_vk = parsed
+        main_scan = ctypes.windll.user32.MapVirtualKeyW(main_vk, 0)
+
+        # 构建修饰键的 keybd_event 代码
+        mod_press_lines = []
+        mod_release_lines = []
+        for mod_vk in modifiers:
+            mod_scan = ctypes.windll.user32.MapVirtualKeyW(mod_vk, 0)
+            mod_press_lines.append(f'ctypes.windll.user32.keybd_event({mod_vk}, {mod_scan}, 0, 0)')
+            mod_release_lines.append(f'ctypes.windll.user32.keybd_event({mod_vk}, {mod_scan}, 2, 0)')
+
+        mod_press = '\n    '.join(mod_press_lines)
+        mod_release = '\n    '.join(reversed(mod_release_lines))
+
+        # 可选的先点击代码 - 使用 virtual 坐标
+        click_code = ''
+        if virtual_x is not None and virtual_y is not None:
+            click_code = f'''
+# 先点击目标位置
+lParam = win32api.MAKELONG({virtual_x}, {virtual_y})
+win32gui.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, 0x0001, lParam)
+time.sleep(0.05)
+win32gui.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lParam)
+time.sleep(0.1)
+'''
+
+        # lParam 构造
+        lparam_down = (main_scan << 16) | 1
+        lparam_up = (main_scan << 16) | 0xC0000001
+
+        # duration_ms 的 sleep
+        hold_sleep = f'time.sleep({duration_ms} / 1000.0)' if duration_ms > 0 else ''
+
+        code = f'''
+import win32gui, win32con, win32api, ctypes, time
+
+hwnd = {hwnd}
+
+{click_code}
+# 按下修饰键
+{mod_press}
+time.sleep(0.05)
+
+# SendMessage 主键
+win32gui.SendMessage(hwnd, win32con.WM_KEYDOWN, {main_vk}, {lparam_down})
+{hold_sleep}
+win32gui.SendMessage(hwnd, win32con.WM_KEYUP, {main_vk}, {lparam_up})
+time.sleep(0.05)
+
+# 释放修饰键
+{mod_release}
+'''
+        timeout = max(5, duration_ms / 1000 + 5) if duration_ms > 0 else 5
+        return self._run_subprocess(code, timeout=int(timeout), non_blocking=non_blocking)
+
+    # ============ hijack 实现（劫持操作）============
+
+    def _hijack_click(self, hwnd: int, virtual_x: int, virtual_y: int) -> bool:
+        """Hijack 点击 - 接收 virtual 坐标（API层已处理最小化恢复）"""
+        code = f'''
+import win32gui, win32api, win32con, ctypes, time
+
+old_fg = win32gui.GetForegroundWindow()
+old_pos = win32api.GetCursorPos()
+
+hwnd = {hwnd}
+virtual_x = {virtual_x}
+virtual_y = {virtual_y}
+
+# API 层已经处理了最小化恢复，直接计算屏幕坐标
+screen_x, screen_y = win32gui.ClientToScreen(hwnd, (virtual_x, virtual_y))
+print("[HijackClick] virtual=(%d, %d), screen=(%d, %d)" % (virtual_x, virtual_y, screen_x, screen_y))
+
+# Hijack 模式：设置焦点并点击
+main_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
+print("[HijackClick] Setting foreground window...")
+target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
+current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
+win32gui.SetForegroundWindow(main_hwnd)
+time.sleep(0.3)
+
+print("[HijackClick] Setting cursor to (%d, %d)..." % (screen_x, screen_y))
+win32api.SetCursorPos((screen_x, screen_y))
+actual_pos = win32api.GetCursorPos()
+print("[HijackClick] Actual cursor pos: (%d, %d)" % (actual_pos[0], actual_pos[1]))
+time.sleep(0.3)
+
+# 用 SendMessage 点击（virtual_x, virtual_y 是客户区坐标）
+lParam = win32api.MAKELONG(virtual_x, virtual_y)
+print("[HijackClick] SendMessage click to hwnd=%d, client=(%d, %d)" % (hwnd, virtual_x, virtual_y))
+win32gui.SendMessage(hwnd, win32con.WM_LBUTTONDOWN, 0x0001, lParam)
+time.sleep(0.05)
+win32gui.SendMessage(hwnd, win32con.WM_LBUTTONUP, 0, lParam)
+
+# 恢复状态
+print("[HijackClick] Restoring state...")
+try:
+    time.sleep(0.01)
+    win32api.SetCursorPos(old_pos)
+    win32gui.SetForegroundWindow(old_fg)
+except:
+    pass
+ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
+print("[HijackClick] Done")
+'''
+        return self._run_subprocess(code, timeout=10)
+
+    def _hijack_right_click(self, hwnd: int, screen_x: int, screen_y: int) -> bool:
+        """Hijack 右键 - 用 win32api 绕过 pyautogui 多屏限制"""
+        main_hwnd = win32gui.GetParent(hwnd) or hwnd
+        code = f'''
+import win32gui, win32api, win32con, ctypes, time
+
+old_fg = win32gui.GetForegroundWindow()
+old_pos = win32api.GetCursorPos()
+
+hwnd = {hwnd}
+main_hwnd = {main_hwnd}
+screen_x = {screen_x}
+screen_y = {screen_y}
+
+print("[HijackRightClick] hwnd=%d, main=%d, target_screen=(%d, %d)" % (hwnd, main_hwnd, screen_x, screen_y))
+
+# 仅在窗口最小化或隐藏时才恢复
+if win32gui.IsIconic(main_hwnd):
+    print("[HijackRightClick] Main window is minimized, restoring...")
+    win32gui.ShowWindow(main_hwnd, win32con.SW_RESTORE)
+    time.sleep(0.2)
+elif not win32gui.IsWindowVisible(main_hwnd):
+    print("[HijackRightClick] Main window not visible, showing...")
+    win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+    time.sleep(0.1)
+
+target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
+current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
+win32gui.SetForegroundWindow(main_hwnd)
+time.sleep(0.1)
+
+win32api.SetCursorPos((screen_x, screen_y))
+MOUSEEVENTF_RIGHTDOWN = 0x0008
+MOUSEEVENTF_RIGHTUP = 0x0010
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0)
+time.sleep(0.05)
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0)
+
+time.sleep(0.01)
+win32api.SetCursorPos(old_pos)
+win32gui.SetForegroundWindow(old_fg)
+ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
+'''
+        return self._run_subprocess(code, timeout=10)
+
+    def _hijack_long_press(self, hwnd: int, screen_x: int, screen_y: int, duration_ms: int) -> bool:
+        """Hijack 长按 - 用 win32api 绕过 pyautogui 多屏限制"""
+        main_hwnd = win32gui.GetParent(hwnd) or hwnd
+        code = f'''
+import win32gui, win32api, win32con, ctypes, time
+
+old_fg = win32gui.GetForegroundWindow()
+old_pos = win32api.GetCursorPos()
+
+hwnd = {hwnd}
+main_hwnd = {main_hwnd}
+screen_x = {screen_x}
+screen_y = {screen_y}
+duration_ms = {duration_ms}
+
+print("[HijackLongPress] hwnd=%d, main=%d, target_screen=(%d, %d), duration=%dms" % (hwnd, main_hwnd, screen_x, screen_y, duration_ms))
+
+# 仅在窗口最小化或隐藏时才恢复
+if win32gui.IsIconic(main_hwnd):
+    print("[HijackLongPress] Main window is minimized, restoring...")
+    win32gui.ShowWindow(main_hwnd, win32con.SW_RESTORE)
+    time.sleep(0.2)
+elif not win32gui.IsWindowVisible(main_hwnd):
+    print("[HijackLongPress] Main window not visible, showing...")
+    win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+    time.sleep(0.1)
+
+target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
+current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
+win32gui.SetForegroundWindow(main_hwnd)
+time.sleep(0.1)
+
+win32api.SetCursorPos((screen_x, screen_y))
+MOUSEEVENTF_LEFTDOWN = 0x0002
+MOUSEEVENTF_LEFTUP = 0x0004
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+time.sleep(duration_ms / 1000)
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+
+time.sleep(0.01)
+win32api.SetCursorPos(old_pos)
+win32gui.SetForegroundWindow(old_fg)
+ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
+'''
+        return self._run_subprocess(code, timeout=max(10, duration_ms / 1000 + 5))
+
+    def _hijack_swipe(self, hwnd: int, sx: int, sy: int, ex: int, ey: int) -> bool:
+        """Hijack 滑动 - 10步插值 + win32api（支持多屏）"""
+        main_hwnd = win32gui.GetParent(hwnd) or hwnd
+        code = f'''
+import win32gui, win32api, win32con, ctypes, time
+
+old_fg = win32gui.GetForegroundWindow()
+old_pos = win32api.GetCursorPos()
+
+main_hwnd = {main_hwnd}
+sx = {sx}
+sy = {sy}
+ex = {ex}
+ey = {ey}
+
+# 仅在窗口最小化或隐藏时才恢复
+if win32gui.IsIconic(main_hwnd):
+    print("[HijackSwipe] Main window is minimized, restoring...")
+    win32gui.ShowWindow(main_hwnd, win32con.SW_RESTORE)
+    time.sleep(0.2)
+elif not win32gui.IsWindowVisible(main_hwnd):
+    print("[HijackSwipe] Main window not visible, showing...")
+    win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+    time.sleep(0.1)
+
+target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
+current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
+win32gui.SetForegroundWindow(main_hwnd)
+time.sleep(0.1)
+
+# 用 win32api 模拟拖拽
+win32api.SetCursorPos((sx, sy))
+MOUSEEVENTF_LEFTDOWN = 0x0002
+MOUSEEVENTF_LEFTUP = 0x0004
+
+# 按下左键
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+time.sleep(0.05)
+
+# 分步移动到终点
+steps = 10
+duration = 0.3
+step_delay = duration / steps
+
+for i in range(1, steps + 1):
+    progress = i / steps
+    cx = int(sx + (ex - sx) * progress)
+    cy = int(sy + (ey - sy) * progress)
+    win32api.SetCursorPos((cx, cy))
+    time.sleep(step_delay)
+
+# 释放左键
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+
+time.sleep(0.01)
+win32api.SetCursorPos(old_pos)
+win32gui.SetForegroundWindow(old_fg)
+ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
+'''
+        return self._run_subprocess(code, timeout=15)
+
+    def _hijack_scroll(self, hwnd: int, screen_x: int, screen_y: int, delta: int) -> bool:
+        """Hijack 滚动 - 用 win32api 绕过 pyautogui 多屏限制"""
+        main_hwnd = win32gui.GetParent(hwnd) or hwnd
+        wheel_delta = delta
+        code = f'''
+import win32gui, win32api, win32con, ctypes, time
+
+old_fg = win32gui.GetForegroundWindow()
+old_pos = win32api.GetCursorPos()
+
+hwnd = {hwnd}
+main_hwnd = {main_hwnd}
+screen_x = {screen_x}
+screen_y = {screen_y}
+wheel_delta = {wheel_delta}
+
+print("[HijackScroll] hwnd=%d, main=%d, scroll_screen=(%d, %d), delta=%d" % (hwnd, main_hwnd, screen_x, screen_y, wheel_delta))
+
+# 仅在窗口最小化或隐藏时才恢复
+if win32gui.IsIconic(main_hwnd):
+    print("[HijackScroll] Main window is minimized, restoring...")
+    win32gui.ShowWindow(main_hwnd, win32con.SW_RESTORE)
+    time.sleep(0.2)
+elif not win32gui.IsWindowVisible(main_hwnd):
+    print("[HijackScroll] Main window not visible, showing...")
+    win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+    time.sleep(0.1)
+
+target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
+current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
+win32gui.SetForegroundWindow(main_hwnd)
+time.sleep(0.1)
+
+win32api.SetCursorPos((screen_x, screen_y))
+MOUSEEVENTF_WHEEL = 0x0800
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, wheel_delta, 0)
+
+time.sleep(0.01)
+win32api.SetCursorPos(old_pos)
+win32gui.SetForegroundWindow(old_fg)
+ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
+'''
+        return self._run_subprocess(code, timeout=10)
+
+    def _hijack_hover(self, hwnd: int, screen_x: int, screen_y: int, duration_ms: int,
+                     semi_blocking: bool = False) -> bool:
+        """Hijack 鼠标悬浮 - SetCursorPos + sleep(duration_ms) + 恢复"""
+        main_hwnd = win32gui.GetParent(hwnd) or hwnd
+        code = f'''
+import win32gui, win32api, win32con, ctypes, time
+
+old_fg = win32gui.GetForegroundWindow()
+old_pos = win32api.GetCursorPos()
+
+# 获取窗口信息用于调试
+window_rect = win32gui.GetWindowRect({hwnd})
+client_rect = win32gui.GetClientRect({hwnd})
+
+main_hwnd = {main_hwnd}
+hwnd = {hwnd}
+screen_x = {screen_x}
+screen_y = {screen_y}
+duration_ms = {duration_ms}
+
+print("[HijackHover] hwnd=%d, main=%d" % (hwnd, main_hwnd))
+print("[HijackHover] window_rect=(%d, %d, %d, %d)" % (window_rect[0], window_rect[1], window_rect[2], window_rect[3]))
+print("[HijackHover] client_rect=(%d, %d, %d, %d)" % (client_rect[0], client_rect[1], client_rect[2], client_rect[3]))
+print("[HijackHover] target_screen_coords=(%d, %d), duration=%dms" % (screen_x, screen_y, duration_ms))
+
+# 仅在窗口最小化或隐藏时才恢复
+if win32gui.IsIconic(main_hwnd):
+    print("[HijackHover] Main window is minimized, restoring...")
+    win32gui.ShowWindow(main_hwnd, win32con.SW_RESTORE)
+    time.sleep(0.2)
+elif not win32gui.IsWindowVisible(main_hwnd):
+    print("[HijackHover] Main window not visible, showing...")
+    win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+    time.sleep(0.1)
+
+target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
+current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
+win32gui.SetForegroundWindow(main_hwnd)
+time.sleep(0.1)
+
+# 用 win32api 移动鼠标到目标位置
+print("[HijackHover] Moving to (%d, %d) with SetCursorPos..." % (screen_x, screen_y))
+win32api.SetCursorPos((screen_x, screen_y))
+actual_pos = win32api.GetCursorPos()
+print("[HijackHover] After SetCursorPos, actual pos=(%d, %d)" % (actual_pos[0], actual_pos[1]))
+
+# 停留指定时长
+if duration_ms > 0:
+    time.sleep(duration_ms / 1000.0)
+
+# 恢复状态
+win32api.SetCursorPos(old_pos)
+win32gui.SetForegroundWindow(old_fg)
+ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
+'''
+        timeout = max(5, duration_ms / 1000 + 5) if duration_ms > 0 else 5
+        return self._run_subprocess(code, timeout=int(timeout), semi_blocking=semi_blocking)
+
+    def _hijack_input_text(self, hwnd: int, screen_x: int, screen_y: int, text: str) -> bool:
+        """Hijack 输入文本 - 用 win32api 绕过 pyautogui 多屏限制
+
+        支持 None 坐标：无坐标时不点击，直接粘贴
+        """
+        main_hwnd = win32gui.GetParent(hwnd) or hwnd
+        text_b64 = base64.b64encode(text.encode('utf-8')).decode('ascii')
+
+        # 判断是否有坐标
+        has_coord = screen_x is not None and screen_y is not None
+
+        code = f'''
+import win32gui, win32api, win32con, ctypes, time, base64
+import pyperclip
+
+text = base64.b64decode("{text_b64}").decode("utf-8")
+
+old_fg = win32gui.GetForegroundWindow()
+old_pos = win32api.GetCursorPos()
+
+main_hwnd = {main_hwnd}
+screen_x = {screen_x}
+screen_y = {screen_y}
+has_coord = {has_coord}
+
+# 仅在窗口最小化或隐藏时才恢复
+if win32gui.IsIconic(main_hwnd):
+    print("[HijackInputText] Main window is minimized, restoring...")
+    win32gui.ShowWindow(main_hwnd, win32con.SW_RESTORE)
+    time.sleep(0.2)
+elif not win32gui.IsWindowVisible(main_hwnd):
+    print("[HijackInputText] Main window not visible, showing...")
+    win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+    time.sleep(0.1)
+
+target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
+current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
+win32gui.SetForegroundWindow(main_hwnd)
+time.sleep(0.1)
+
+if has_coord:
+    win32api.SetCursorPos((screen_x, screen_y))
+    MOUSEEVENTF_LEFTDOWN = 0x0002
+    MOUSEEVENTF_LEFTUP = 0x0004
+    ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+    time.sleep(0.05)
+    ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+    time.sleep(0.2)
+
+pyperclip.copy(text)
+time.sleep(0.1)
+
+VK_CONTROL = 0x11
+VK_V = 0x56
+scan_ctrl = ctypes.windll.user32.MapVirtualKeyW(VK_CONTROL, 0)
+scan_v = ctypes.windll.user32.MapVirtualKeyW(VK_V, 0)
+
+ctypes.windll.user32.keybd_event(VK_CONTROL, scan_ctrl, 0, 0)
+time.sleep(0.05)
+ctypes.windll.user32.keybd_event(VK_V, scan_v, 0, 0)
+time.sleep(0.05)
+ctypes.windll.user32.keybd_event(VK_V, scan_v, 2, 0)
+time.sleep(0.05)
+ctypes.windll.user32.keybd_event(VK_CONTROL, scan_ctrl, 2, 0)
+time.sleep(0.1)
+
+win32api.SetCursorPos(old_pos)
+win32gui.SetForegroundWindow(old_fg)
+ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
+'''
+        return self._run_subprocess(code, timeout=30)
+
+    def _hijack_key_press(self, hwnd: int, key: str,
+                          virtual_x: int = None, virtual_y: int = None,
+                          duration_ms: int = 0, non_blocking: bool = False) -> bool:
+        """Hijack 按键 - 用 win32api 绕过 pyautogui 多屏限制
+
+        关键点：激活窗口后需要足够延迟确保焦点稳定（150ms）
+        """
+        main_hwnd = win32gui.GetParent(hwnd) or hwnd
+        parsed = self._parse_keys(key)
+        if parsed is None:
             return False
 
-    def _postmessage_long_press(self, hwnd: int, x: int, y: int, duration_ms: int) -> bool:
-        """PostMessage长按"""
-        try:
-            lParam = self._make_lparam(x, y)
-            self.user32.PostMessageW(hwnd, self.WM_LBUTTONDOWN, self.MK_LBUTTON, lParam)
-            time.sleep(duration_ms / 1000)
-            self.user32.PostMessageW(hwnd, self.WM_LBUTTONUP, 0, lParam)
-            return True
-        except Exception:
-            return False
+        modifiers, main_vk = parsed
+        all_vks = modifiers + [main_vk]
 
-    def _postmessage_swipe(
-        self,
-        hwnd: int,
-        start_x: int,
-        start_y: int,
-        end_x: int,
-        end_y: int
-    ) -> bool:
-        """PostMessage滑动"""
-        try:
-            lParam_start = self._make_lparam(start_x, start_y)
-            lParam_end = self._make_lparam(end_x, end_y)
+        # 构建按键代码
+        press_lines = []
+        release_lines = []
+        for vk in all_vks:
+            scan = ctypes.windll.user32.MapVirtualKeyW(vk, 0)
+            press_lines.append(f'ctypes.windll.user32.keybd_event({vk}, {scan}, 0, 0)')
+        for vk in reversed(all_vks):
+            scan = ctypes.windll.user32.MapVirtualKeyW(vk, 0)
+            release_lines.append(f'ctypes.windll.user32.keybd_event({vk}, {scan}, 2, 0)')
 
-            self.user32.PostMessageW(hwnd, self.WM_LBUTTONDOWN, self.MK_LBUTTON, lParam_start)
-            time.sleep(0.05)
-            self.user32.PostMessageW(hwnd, self.WM_MOUSEMOVE, self.MK_LBUTTON, lParam_end)
-            time.sleep(0.05)
-            self.user32.PostMessageW(hwnd, self.WM_LBUTTONUP, 0, lParam_end)
-            return True
-        except Exception:
-            return False
+        all_press = '\n'.join(press_lines)
+        all_release = '\n'.join(release_lines)
 
-    def _postmessage_key_press(self, hwnd: int, key: str) -> bool:
-        """PostMessage按键"""
-        try:
-            vk_code = self._get_vk_code(key)
-            if vk_code is None:
-                return False
+        # 可选的先点击代码
+        click_code = ''
+        if virtual_x is not None and virtual_y is not None:
+            screen_x, screen_y = self._client_to_screen(hwnd, virtual_x, virtual_y)
+            click_code = f'''
+# 用 win32api 点击目标位置
+win32api.SetCursorPos(({screen_x}, {screen_y}))
+MOUSEEVENTF_LEFTDOWN = 0x0002
+MOUSEEVENTF_LEFTUP = 0x0004
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+time.sleep(0.05)
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+time.sleep(0.1)
+'''
 
-            self.user32.PostMessageW(hwnd, self.WM_KEYDOWN, vk_code, 0)
-            time.sleep(0.05)
-            self.user32.PostMessageW(hwnd, self.WM_KEYUP, vk_code, 0)
-            return True
-        except Exception:
-            return False
+        hold_sleep = f'time.sleep({duration_ms} / 1000.0)' if duration_ms > 0 else ''
 
-    def _postmessage_char(self, hwnd: int, char: str) -> bool:
-        """PostMessage字符"""
-        try:
-            self.user32.PostMessageW(hwnd, self.WM_CHAR, ord(char), 0)
-            return True
-        except Exception:
-            return False
+        code = f'''
+import win32gui, win32api, win32con, ctypes, time
 
-    # ============ SendInput 实现 ============
+hwnd = {hwnd}
+main_hwnd = {main_hwnd}
 
-    def _sendinput_click(self, x: int, y: int) -> bool:
-        """SendInput点击"""
-        if not PYAUTOGUI_AVAILABLE:
-            return False
-        try:
-            pyautogui.click(x, y)
-            return True
-        except Exception:
-            return False
+# 保存状态
+old_fg = win32gui.GetForegroundWindow()
+old_pos = win32api.GetCursorPos()
 
-    def _sendinput_right_click(self, x: int, y: int) -> bool:
-        """SendInput右键"""
-        if not PYAUTOGUI_AVAILABLE:
-            return False
-        try:
-            pyautogui.rightClick(x, y)
-            return True
-        except Exception:
-            return False
+# 仅在窗口最小化或隐藏时才恢复
+if win32gui.IsIconic(main_hwnd):
+    print("[HijackKeyPress] Main window is minimized, restoring...")
+    win32gui.ShowWindow(main_hwnd, win32con.SW_RESTORE)
+    time.sleep(0.2)
+elif not win32gui.IsWindowVisible(main_hwnd):
+    print("[HijackKeyPress] Main window not visible, showing...")
+    win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+    time.sleep(0.1)
 
-    def _sendinput_long_press(self, x: int, y: int, duration_ms: int) -> bool:
-        """SendInput长按"""
-        if not PYAUTOGUI_AVAILABLE:
-            return False
-        try:
-            pyautogui.moveTo(x, y)
-            pyautogui.mouseDown()
-            time.sleep(duration_ms / 1000)
-            pyautogui.mouseUp()
-            return True
-        except Exception:
-            return False
+target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
+current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
+win32gui.SetForegroundWindow(main_hwnd)
+time.sleep(0.1)
 
-    def _sendinput_swipe(self, start_x: int, start_y: int, end_x: int, end_y: int) -> bool:
-        """SendInput滑动"""
-        if not PYAUTOGUI_AVAILABLE:
-            return False
-        try:
-            duration = 0.3
-            pyautogui.moveTo(start_x, start_y)
-            pyautogui.drag(end_x - start_x, end_y - start_y, duration=duration)
-            return True
-        except Exception:
-            return False
+{click_code}
 
-    def _sendinput_key_press(self, key: str) -> bool:
-        """SendInput按键"""
-        if not PYAUTOGUI_AVAILABLE:
-            return False
-        try:
-            keys = self._parse_key_combination(key)
-            pyautogui.hotkey(*keys)
-            return True
-        except Exception:
-            return False
+# 按下所有键
+{all_press}
+time.sleep(0.05)
+{hold_sleep}
+# 释放所有键
+{all_release}
+time.sleep(0.05)
+
+# 恢复状态
+win32api.SetCursorPos(old_pos)
+win32gui.SetForegroundWindow(old_fg)
+ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
+'''
+        timeout = max(5, duration_ms / 1000 + 5) if duration_ms > 0 else 5
+        return self._run_subprocess(code, timeout=int(timeout), non_blocking=non_blocking)
 
     # ============ 辅助方法 ============
 
-    def _get_vk_code(self, key: str) -> Optional[int]:
-        """获取虚拟键码"""
-        key_lower = key.lower()
+    def _run_subprocess(self, code: str, timeout: int = 5,
+                        non_blocking: bool = False, semi_blocking: bool = False) -> bool:
+        """在子进程中执行代码
 
-        # 特殊键
-        if key_lower in self._key_map:
-            return self._key_map[key_lower]
+        Args:
+            code: Python 代码字符串
+            timeout: 超时秒数
+            non_blocking: True 时用 Popen 不等待完成（用于 duration_ms 的并发按键）
+            semi_blocking: True 时启动子进程后等待 100ms（用于 hover 等待鼠标到位）
+        """
+        try:
+            if non_blocking or semi_blocking:
+                proc = subprocess.Popen(
+                    [sys.executable, '-c', code],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                # 验证子进程是否成功启动
+                if semi_blocking:
+                    # 半阻塞：等待 200ms 让鼠标到位
+                    time.sleep(0.2)
+                    if proc.poll() is not None:
+                        # 子进程已经退出了，说明启动失败
+                        print(f"[SubprocessError] semi_blocking subprocess exited immediately with code={proc.returncode}")
+                        return False
+                    print(f"[Subprocess] semi_blocking subprocess started and mouse positioned, pid={proc.pid}")
+                else:
+                    # 非阻塞：检查子进程是否启动
+                    time.sleep(0.01)
+                    if proc.poll() is not None:
+                        print(f"[SubprocessError] non_blocking subprocess exited immediately with code={proc.returncode}")
+                        return False
+                    print(f"[Subprocess] non_blocking subprocess started with pid={proc.pid}")
+                return True
+            else:
+                result = subprocess.run(
+                    [sys.executable, '-c', code],
+                    capture_output=True, text=True, timeout=timeout
+                )
+                if result.returncode != 0:
+                    print(f"[SubprocessError] returncode={result.returncode}")
+                    if result.stderr:
+                        print(f"[SubprocessError] stderr={result.stderr[:500]}")
+                if result.stdout and result.stdout.strip():
+                    print(f"[SubprocessLog] {result.stdout.strip()[:500]}")
+                return result.returncode == 0
+        except Exception as e:
+            print(f"[SubprocessError] exception={e}")
+            return False
 
-        # 单个字符
-        if len(key) == 1:
-            return ord(key.upper())
+    def _client_to_screen(self, hwnd: int, x: int, y: int) -> Tuple[int, int]:
+        """客户区坐标转屏幕坐标"""
+        return win32gui.ClientToScreen(hwnd, (x, y))
 
-        return None
+    def _parse_keys(self, key: str) -> Optional[Tuple[List[int], int]]:
+        """解析按键字符串，返回 (修饰键列表, 主键VK)
 
-    def _parse_key_combination(self, key: str) -> list:
-        """解析组合键"""
-        parts = key.split('+')
-        result = []
+        按键用空格分隔，如 "ctrl shift s"
+        最后一个非修饰键作为主键
+        """
+        parts = key.strip().split()
+        if not parts:
+            return None
+
+        vks = []
         for part in parts:
-            part = part.strip().lower()
-            if part in self._key_map:
-                result.append(part)
+            part_lower = part.lower()
+            if part_lower in self._key_map:
+                vks.append(self._key_map[part_lower])
             elif len(part) == 1:
-                result.append(part)
-        return result
+                vks.append(ord(part.upper()))
+            else:
+                return None
 
-    def _request_confirm(self) -> bool:
-        """请求用户确认"""
-        if self.confirm_callback:
-            return self.confirm_callback()
-        # 默认返回False，需要Tauri设置确认回调
-        return False
+        # 分离修饰键和主键：最后一个非修饰键是主键
+        main_idx = len(vks) - 1
+        for i in range(len(vks) - 1, -1, -1):
+            if vks[i] not in MODIFIER_VKS:
+                main_idx = i
+                break
+
+        modifiers = vks[:main_idx]
+        main_vk = vks[main_idx]
+
+        return modifiers, main_vk
 
 
 # 全局操作注入实例

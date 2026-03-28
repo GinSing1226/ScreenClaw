@@ -78,3 +78,32 @@ class TestConfigService:
         service.update_local_ip()
         assert service.config.server.local_ip != ""
         # 应该不是默认的127.0.0.1（除非真的没有网络）
+
+    def test_update_port(self, tmp_path):
+        """测试更新端口"""
+        config_path = os.path.join(tmp_path, "test_config.json")
+        service = ConfigService(config_path)
+
+        # 更新端口
+        service.update_port(9999)
+        assert service.config.server.port == 9999
+
+        # 重新加载验证持久化
+        service.reload()
+        assert service.config.server.port == 9999
+
+    def test_regenerate_token(self, tmp_path):
+        """测试重新生成Token"""
+        config_path = os.path.join(tmp_path, "test_config.json")
+        service = ConfigService(config_path)
+
+        old_token = service.config.server.token
+
+        # 重新生成
+        new_token = service.regenerate_token()
+        assert new_token != old_token
+        assert service.config.server.token == new_token
+
+        # 验证新Token有效
+        assert service.verify_token(new_token) == True
+        assert service.verify_token(old_token) == False

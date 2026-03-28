@@ -11,7 +11,8 @@ class BaseRequest(BaseModel):
     """请求基类"""
     ai_app_type: str = Field(..., description="AI应用类型")
     session_id: str = Field(..., description="会话ID")
-    process_id: int = Field(..., description="进程ID")
+    window_id: int = Field(..., description="窗口句柄")
+    main_window_id: int = Field(None, description="主窗口ID（可选，用于恢复窗口）")
 
 
 # ============ 截图相关 ============
@@ -45,6 +46,11 @@ class ClickRequest(BaseRequest):
     """点击请求"""
     x: float = Field(..., ge=0, le=100, description="横坐标(0-100)")
     y: float = Field(..., ge=0, le=100, description="纵坐标(0-100)")
+    action_method: str = Field(
+        default="background",
+        description="操作方式: background(无感,不抢鼠标) / hijack(劫持,短暂接管,需确认)"
+    )
+    main_window_id: int = Field(None, description="主窗口ID（用于恢复窗口后查找子窗口）")
 
 
 class LongPressRequest(ClickRequest):
@@ -54,11 +60,25 @@ class LongPressRequest(ClickRequest):
 
 class SwipeRequest(BaseRequest):
     """滑动请求"""
-    target_type: str = Field(default="pc", description="目标类型: pc/mobile")
     start_x: float = Field(..., ge=0, le=100, description="起始横坐标")
     start_y: float = Field(..., ge=0, le=100, description="起始纵坐标")
     end_x: float = Field(..., ge=0, le=100, description="结束横坐标")
     end_y: float = Field(..., ge=0, le=100, description="结束纵坐标")
+    action_method: str = Field(
+        default="background",
+        description="操作方式: background(无感) / hijack(劫持,需确认)"
+    )
+
+
+class ScrollRequest(BaseRequest):
+    """滚动请求"""
+    x: float = Field(..., ge=0, le=100, description="滚动位置横坐标(0-100)")
+    y: float = Field(..., ge=0, le=100, description="滚动位置纵坐标(0-100)")
+    delta: int = Field(..., description="滚动量(正值向上,负值向下)")
+    action_method: str = Field(
+        default="background",
+        description="操作方式: background(无感,PostMessage) / hijack(劫持,需确认)"
+    )
 
 
 class RightClickRequest(ClickRequest):
@@ -66,16 +86,33 @@ class RightClickRequest(ClickRequest):
     pass
 
 
-class InputTextRequest(ClickRequest):
+class HoverRequest(ClickRequest):
+    """鼠标悬浮请求（移动鼠标到目标位置并停留）"""
+    duration_ms: int = Field(default=500, ge=0, description="停留时长(毫秒)，默认500ms")
+
+
+class InputTextRequest(BaseRequest):
     """输入文本请求"""
-    target_type: str = Field(default="pc", description="目标类型: pc/mobile")
-    text: str = Field(..., description="输入文本")
+    x: Optional[float] = Field(default=None, ge=0, le=100, description="可选，输入位置横坐标(0-100)")
+    y: Optional[float] = Field(default=None, ge=0, le=100, description="可选，输入位置纵坐标(0-100)")
+    text: str = Field(..., description="输入文本，\\n表示换行")
+    newline_key: str = Field(default="shift enter", description="换行键，默认 shift enter（可选：ctrl enter, enter 等）")
+    action_method: str = Field(
+        default="background",
+        description="操作方式: background(无感,SendMessage WM_CHAR) / hijack(劫持,剪贴板+Ctrl+V,需确认)"
+    )
 
 
 class PressKeyRequest(BaseRequest):
     """按键请求"""
-    target_type: str = Field(default="pc", description="目标类型: pc/mobile")
-    key: str = Field(..., description="按键，支持组合键如Ctrl+C")
+    key: str = Field(..., description="按键，空格分隔组合键如 ctrl c（不用+号）")
+    x: Optional[float] = Field(default=None, ge=0, le=100, description="可选，先点击此横坐标再按键")
+    y: Optional[float] = Field(default=None, ge=0, le=100, description="可选，先点击此纵坐标再按键")
+    duration_ms: int = Field(default=0, ge=0, description="按住时长(毫秒)，0=立即释放")
+    action_method: str = Field(
+        default="background",
+        description="操作方式: background(无感,混合方案) / hijack(劫持,闪电劫持,需确认)"
+    )
 
 
 class WaitRequest(BaseRequest):
@@ -83,13 +120,15 @@ class WaitRequest(BaseRequest):
     duration_ms: int = Field(..., ge=1, description="等待时长(毫秒)")
 
 
-# ============ 进程相关 ============
+# ============ 窗口相关 ============
 
-class GetProcessListRequest(BaseModel):
-    """获取进程列表请求"""
+class GetWindowListRequest(BaseModel):
+    """获取窗口列表请求"""
     ai_app_type: str = Field(..., description="AI应用类型")
     session_id: str = Field(..., description="会话ID")
     keyword: Optional[str] = Field(default="", description="搜索关键词")
+    include_children: bool = Field(default=False, description="是否返回子窗口")
+    children_filter: str = Field(default="titled", description="子窗口过滤策略: all(全部) / titled(仅标题非空)")
 
 
 # ============ 组合指令 ============

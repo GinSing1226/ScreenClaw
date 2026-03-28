@@ -16,16 +16,25 @@ class BaseResponse(BaseModel):
 
 # ============ 进程相关 ============
 
+class ChildWindow(BaseModel):
+    """子窗口信息"""
+    window_id: int = Field(..., description="子窗口句柄")
+    window_title: str = Field(default="", description="窗口标题")
+    class_name: str = Field(default="", description="窗口类名")
+
+
 class ProcessInfo(BaseModel):
     """进程信息"""
-    process_id: int = Field(..., description="进程ID")
+    process_id: int = Field(..., description="进程ID（保留，用于识别同一进程）")
     process_name: str = Field(..., description="进程名称")
+    window_id: int = Field(..., description="主窗口句柄")
     window_title: str = Field(default="", description="窗口标题")
+    child_windows: List[ChildWindow] = Field(default_factory=list, description="子窗口列表")
 
 
-class GetProcessListResponse(BaseResponse):
-    """获取进程列表响应"""
-    data: Optional[Dict[str, List[ProcessInfo]]] = Field(default=None, description="进程列表")
+class GetWindowListResponse(BaseResponse):
+    """获取窗口列表响应"""
+    data: Optional[Dict[str, List[ProcessInfo]]] = Field(default=None, description="窗口列表")
 
 
 # ============ 截图相关 ============
@@ -67,6 +76,7 @@ class InstructionResult(BaseModel):
     """单条指令结果"""
     success: bool = Field(..., description="是否成功")
     message: str = Field(..., description="消息")
+    data: Optional[Dict[str, Any]] = Field(default=None, description="额外数据（如截图）")
 
 
 class BatchData(BaseModel):
@@ -84,7 +94,7 @@ class BatchResponse(BaseResponse):
 # ============ 错误码定义 ============
 
 ERROR_CODES = {
-    "PROCESS_NOT_FOUND": {"zh": "进程不存在", "en": "Process not found"},
+    "WINDOW_NOT_FOUND": {"zh": "窗口不存在", "en": "Window not found"},
     "PROCESS_BLOCKED": {"zh": "进程在禁止清单中", "en": "Process is blocked"},
     "SCREENSHOT_FAILED": {"zh": "截图失败", "en": "Screenshot failed"},
     "OPERATION_FAILED": {"zh": "操作失败", "en": "Operation failed"},

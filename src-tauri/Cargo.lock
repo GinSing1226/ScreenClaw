@@ -3283,9 +3283,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
-name = "screen-claw"
+name = "screenclaw"
 version = "1.0.0"
 dependencies = [
+ "rand 0.8.5",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

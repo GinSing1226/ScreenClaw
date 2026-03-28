@@ -40,7 +40,8 @@ class InputConfig(BaseModel):
 
 class SecurityConfig(BaseModel):
     """安全配置"""
-    blocked_processes: List[str] = []
+    blocked_processes: List[str] = []  # 禁止操作的进程
+    auto_confirm_processes: List[str] = []  # 自动同意键盘鼠标操作的进程
 
 
 class LogConfig(BaseModel):

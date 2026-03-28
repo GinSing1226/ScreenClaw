@@ -2,6 +2,7 @@
 日志服务
 """
 import os
+import sys
 import json
 import time
 from datetime import datetime
@@ -9,11 +10,31 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 
 
+def get_project_root() -> Path:
+    """获取项目根目录"""
+    # 优先从环境变量获取（开发模式）
+    if os.environ.get('SCREENCLAW_ROOT'):
+        return Path(os.environ['SCREENCLAW_ROOT'])
+
+    # 获取当前exe或脚本所在目录，然后向上一级找到项目根目录
+    if getattr(sys, 'frozen', False):
+        # 打包后的exe
+        exe_dir = Path(sys.executable).parent
+        return exe_dir.parent.parent.parent
+    else:
+        # 开发模式：python/main.py 所在目录的父目录
+        return Path(__file__).parent.parent.parent.parent
+
+
 class LogService:
     """日志服务"""
 
-    def __init__(self, log_dir: str = "logs"):
-        self.log_dir = log_dir
+    def __init__(self, log_dir: str = None):
+        if log_dir is None:
+            project_root = get_project_root()
+            self.log_dir = str(project_root / "logs")
+        else:
+            self.log_dir = log_dir
         self._ensure_dir()
 
     def _ensure_dir(self):
@@ -31,7 +52,7 @@ class LogService:
         self,
         ai_app_type: str,
         session_id: str,
-        process_id: int,
+        window_id: int,
         process_name: str,
         instruction: str,
         params: Dict[str, Any],
@@ -44,7 +65,7 @@ class LogService:
         Args:
             ai_app_type: AI应用类型
             session_id: 会话ID
-            process_id: 进程ID
+            window_id: 窗口句柄
             process_name: 进程名称
             instruction: 指令类型
             params: 请求参数
@@ -52,8 +73,8 @@ class LogService:
             duration_ms: 执行耗时（毫秒）
         """
         log_entry = {
-            "timestamp": datetime.now().isoformat() + "Z",
-            "process_id": process_id,
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "window_id": window_id,
             "process_name": process_name,
             "instruction": instruction,
             "params": params,

@@ -6,9 +6,30 @@ import base64
 import os
 import random
 import string
+import sys
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 from PIL import Image
+
+
+def get_project_root() -> Path:
+    """获取项目根目录"""
+    # 获取当前exe或脚本所在目录，然后向上一级找到项目根目录
+    if getattr(sys, 'frozen', False):
+        # 打包后的exe
+        exe_dir = Path(sys.executable).parent
+        # exe在 src-tauri/target/debug/ 或 release/ 目录下
+        # 项目根目录是 exe 的父目录的父目录的父目录
+        return exe_dir.parent.parent.parent
+    else:
+        # 开发模式：python/main.py 所在目录的父目录
+        return Path(__file__).parent.parent.parent.parent
+
+
+def get_data_dir() -> Path:
+    """获取data目录路径"""
+    return get_project_root() / "data"
 
 
 def compress_image(
@@ -123,26 +144,34 @@ def generate_screenshot_filename() -> str:
 def generate_data_dir(
     base_dir: str,
     ai_app_type: str,
-    session_id: str
+    session_id: str,
+    window_id: str = ""
 ) -> str:
     """
     生成数据存储目录
 
-    格式: base_dir/ai_app_type-session_id-yyyy-mm-dd/
+    格式: 项目根目录/data/ai_app_type-session_id[-window_id]-yyyy-mm-dd/
 
     Args:
-        base_dir: 基础目录
+        base_dir: 基础目录名（如 "data"）
         ai_app_type: AI应用类型
         session_id: 会话ID
+        window_id: 窗口ID（可选）
 
     Returns:
-        目录路径
+        目录路径（绝对路径）
     """
+    # 使用项目根目录下的data目录
+    project_data_dir = get_data_dir()
+
     date_str = datetime.now().strftime("%Y-%m-%d")
-    dir_name = f"{ai_app_type}-{session_id}-{date_str}"
-    dir_path = os.path.join(base_dir, dir_name)
+    if window_id:
+        dir_name = f"{ai_app_type}-{session_id}-{window_id}-{date_str}"
+    else:
+        dir_name = f"{ai_app_type}-{session_id}-{date_str}"
+    dir_path = project_data_dir / dir_name
 
-    if not os.path.exists(dir_path):
-        os.makedirs(dir_path)
+    if not dir_path.exists():
+        dir_path.mkdir(parents=True, exist_ok=True)
 
-    return dir_path
+    return str(dir_path)

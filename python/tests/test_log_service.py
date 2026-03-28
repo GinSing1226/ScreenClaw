@@ -20,7 +20,7 @@ class TestLogService:
         service.log(
             ai_app_type="test_app",
             session_id="session_001",
-            process_id=1234,
+            window_id=1234,
             process_name="test.exe",
             instruction="click",
             params={"x": 50, "y": 50},
@@ -43,7 +43,7 @@ class TestLogService:
             service.log(
                 ai_app_type="test_app",
                 session_id="session_001",
-                process_id=1234,
+                window_id=1234,
                 process_name="test.exe",
                 instruction=f"action_{i}",
                 params={},
@@ -63,7 +63,7 @@ class TestLogService:
         service.log(
             ai_app_type="test_app",
             session_id="session_001",
-            process_id=1234,
+            window_id=1234,
             process_name="test.exe",
             instruction="click",
             params={"x": 50, "y": 50},
@@ -75,7 +75,7 @@ class TestLogService:
         assert len(logs) == 1
 
         log = logs[0]
-        assert log["process_id"] == 1234
+        assert log["window_id"] == 1234
         assert log["process_name"] == "test.exe"
         assert log["instruction"] == "click"
         assert log["params"]["x"] == 50
@@ -91,7 +91,7 @@ class TestLogService:
         service.log(
             ai_app_type="test_app",
             session_id="session_001",
-            process_id=1234,
+            window_id=1234,
             process_name="notepad.exe",
             instruction="click",
             params={},
@@ -102,7 +102,7 @@ class TestLogService:
         service.log(
             ai_app_type="test_app",
             session_id="session_001",
-            process_id=5678,
+            window_id=5678,
             process_name="calc.exe",
             instruction="click",
             params={},
