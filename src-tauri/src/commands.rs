@@ -225,6 +225,7 @@ pub struct LogItem {
     pub process_name: String,    // 被操作的应用名
     pub session_id: String,      // 会话ID
     pub instruction: String,
+    pub params: serde_json::Value,  // 请求参数
     pub result: serde_json::Value,
 }
 
@@ -303,6 +304,9 @@ pub async fn get_logs() -> Result<Vec<LogItem>, String> {
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("")
                                     .to_string(),
+                                params: json.get("params")
+                                    .cloned()
+                                    .unwrap_or(serde_json::json!({})),
                                 result: json.get("result")
                                     .cloned()
                                     .unwrap_or(serde_json::json!({"success": false})),

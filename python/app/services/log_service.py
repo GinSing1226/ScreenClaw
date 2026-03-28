@@ -84,11 +84,16 @@ class LogService:
 
         log_file = self._get_log_file_path(ai_app_type, session_id)
 
+        # 调试信息
+        print(f"[LOG] Writing log to: {log_file}")
+        print(f"[LOG] ai_app_type='{ai_app_type}', session_id='{session_id}'")
+
         try:
             with open(log_file, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
+            print(f"[LOG] Log written successfully")
         except Exception as e:
-            print(f"写入日志失败: {e}")
+            print(f"[LOG] 写入日志失败: {e}")
 
     def read_logs(
         self,

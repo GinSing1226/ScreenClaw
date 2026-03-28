@@ -444,6 +444,14 @@ Configuration file located at `data/config.json` (auto-created on initialization
 
 ---
 
+## 🗺️ Roadmap
+
+- 🎯 **Improve Recognition Accuracy** — Enhance first-time recognition through skill optimization and scenario template accumulation
+- 🔄 **More RPA Actions** — Expand supported automation types to cover more use cases
+- 📦 **Scenario Template Library** — Package more templates for common software, ready to use out-of-the-box
+
+---
+
 ## 🤝 Contributing
 
 Issues and Pull Requests are welcome!

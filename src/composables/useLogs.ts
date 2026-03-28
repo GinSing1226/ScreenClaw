@@ -9,6 +9,7 @@ export interface LogItem {
   process_name: string
   session_id: string
   instruction: string
+  params: Record<string, any>
   result: Record<string, any>
 }
 

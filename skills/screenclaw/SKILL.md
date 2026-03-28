@@ -35,33 +35,6 @@ description: |
 7. 循环步骤 4-6 直到任务完成
 ```
 
-### 两条铁律
-
-**铁律1：session_id 必须保持一致**
-- 整个会话使用同一个 session_id
-- 每次调用生成新的会导致图片分散存储
-- 详细规则见 `references/config.md`
-
-**铁律2：必须使用现成脚本**
-- 截图响应：必须用 `scripts/fetch_screenshot.py`
-- batch 响应：必须用 `scripts/batch_results_processor.py`
-- 禁止自己编写保存图片的代码
-
-### 核心概念
-
-**坐标系统**：使用百分比坐标（0-100）
-- `x=0` 是左边缘，`x=100` 是右边缘
-- `y=0` 是上边缘，`y=100` 是下边缘
-- 示例：`x=50, y=30` 表示水平居中，垂直30%的位置
-
-**操作方式 (action_method)**：
-| 方式 | 体验 | 兼容性 |
-|------|------|--------|
-| `background` | 无感操作，不抢鼠标键盘 | 兼容性稍差 |
-| `hijack` | 会短暂接管，需用户确认 | 兼容性好 |
-
-**详细说明**：见下文"API 公共格式 → 操作方式详解"
-
 ---
 
 ## 方法论
@@ -153,6 +126,70 @@ description: |
 
 ---
 
+### 三条铁律
+
+**铁律1：session_id 必须保持一致**
+- 整个会话使用同一个 session_id
+- 每次调用生成新的会导致图片分散存储
+- 详细规则见 `references/config.md`
+
+**铁律2：必须使用现成脚本**
+- 截图响应：必须用 `scripts/fetch_screenshot_cli.py`（bash）或 `scripts/fetch_screenshot_cli.ps1`（PowerShell）
+- batch 响应：必须用 `scripts/batch_results_processor.py`
+- 禁止自己编写保存图片的代码
+
+**铁律3：执行前必须告知用户**
+- 每次执行 API 指令前，必须告诉用户准备干什么
+- 说明为什么这样干（理由）
+- 让用户了解 AI 的意图和推理过程
+
+**告知格式**：
+```
+准备执行：[操作描述，如"点击发送按钮"]
+理由：[为什么这样做，如"根据五阶段分析，发送按钮位于坐标(50,95)"]
+```
+
+**示例**：
+```
+准备执行：调用 screenshot API 获取飞书窗口截图
+理由：需要查看当前界面状态，定位"新建文档"按钮的坐标位置
+
+准备执行：调用 click API，坐标(50,30)
+理由：根据截图分析，(50,30)是"搜索框"的位置，需要点击后输入关键词
+```
+
+**环境选择规则**：
+| 当前 Shell | 使用脚本 |
+|-----------|---------|
+| bash / zsh / Git Bash | `.py` 脚本 |
+| PowerShell | `.ps1` 脚本 |
+| 不确定 | 优先 `.py` 脚本 |
+
+**禁止混用**：
+- ❌ 在 bash 中运行 `.ps1` 脚本
+- ❌ 在 PowerShell 中直接运行 `.py` 文件（需用 `python xxx.py`）
+
+### 核心概念
+
+**坐标系统**：使用百分比坐标（0-100）
+- `x=0` 是左边缘，`x=100` 是右边缘
+- `y=0` 是上边缘，`y=100` 是下边缘
+- 示例：`x=50, y=30` 表示水平居中，垂直30%的位置
+
+**操作方式 (action_method)**：
+| 方式 | 体验 | 兼容性 |
+|------|------|--------|
+| `background` | 无感操作，不抢鼠标键盘 | 兼容性稍差 |
+| `hijack` | 会短暂接管，需用户确认 | 兼容性好 |
+
+**详细说明**：见下文"API 公共格式 → 操作方式详解"
+
+---
+
+
+
+---
+
 ### 完整工作流程
 
 ```
@@ -200,21 +237,21 @@ description: |
 
 ## API 快速索引
 
-| API | 为什么用（目的） | 什么时候不用 | 参考文档 |
-|-----|-----------------|-------------|----------|
-| `health` | 验证ScreenClaw服务是否可连接，操作前的第一步检查 | 已确认服务正常运行 | api/health.md |
-| `get_window_list` | 需要找到目标窗口的window_id（后续操作必需） | 已知window_id，无需查找 | api/get_window_list.md |
-| `screenshot` | 需要查看当前界面状态、定位目标元素坐标 | 只执行已知的固定操作序列 | api/screenshot.md |
-| `click` | 触发某个功能（如确认、取消）、进入某个页面（如详情页）、激活某个控件 | 需要输入文本、需要长按触发、需要滑动/滚动 | api/click.md |
-| `long_press` | 触发长按才能激活的功能（如拖拽起点、显示菜单） | 普通点击即可触发 | api/long_press.md |
-| `swipe` | 触摸式滑动（翻页、切换标签、拖拽） | 鼠标滚轮滚动、点击类操作 | api/swipe.md |
-| `scroll` | 鼠标滚轮滚动（浏览长内容、列表） | 触摸式滑动、点击类操作 | api/scroll.md |
-| `right_click` | 打开上下文菜单、调用特定功能的快捷方式 | 左键操作即可完成 | api/right_click.md |
-| `hover` | 触发悬停效果（tooltip、提示框）、显示隐藏的UI交互元素 | 需要点击或其他操作 | api/hover.md |
-| `input_text` | 向输入框输入文本内容、填表、搜索 | 只需点击、无需输入 | api/input_text.md |
-| `press_key` | 触发快捷键功能（Ctrl+C复制）、发送特殊按键（Enter确认） | 鼠标操作即可完成 | api/press_key.md |
-| `wait` | 等待UI动画完成、等待页面加载、等待异步响应 | 不需要等待，可立即执行下一步 | api/wait.md |
-| `batch` | 执行多步骤的固定流程（如登录、导航）、减少网络请求次数 | 单步操作、需要根据结果动态决策 | api/batch.md |
+| API | 方法 | 为什么用（目的） | 什么时候不用 | 参考文档 |
+|-----|------|-----------------|-------------|----------|
+| `health` | **GET** | 验证ScreenClaw服务是否可连接，操作前的第一步检查 | 已确认服务正常运行 | api/health.md |
+| `get_window_list` | **GET** | 需要找到目标窗口的window_id（后续操作必需） | 已知window_id，无需查找 | api/get_window_list.md |
+| `screenshot` | **POST** | 需要查看当前界面状态、定位目标元素坐标 | 只执行已知的固定操作序列 | api/screenshot.md |
+| `click` | **POST** | 触发某个功能（如确认、取消）、进入某个页面（如详情页）、激活某个控件 | 需要输入文本、需要长按触发、需要滑动/滚动 | api/click.md |
+| `long_press` | **POST** | 触发长按才能激活的功能（如拖拽起点、显示菜单） | 普通点击即可触发 | api/long_press.md |
+| `swipe` | **POST** | 触摸式滑动（翻页、切换标签、拖拽） | 鼠标滚轮滚动、点击类操作 | api/swipe.md |
+| `scroll` | **POST** | 鼠标滚轮滚动（浏览长内容、列表） | 触摸式滑动、点击类操作 | api/scroll.md |
+| `right_click` | **POST** | 打开上下文菜单、调用特定功能的快捷方式 | 左键操作即可完成 | api/right_click.md |
+| `hover` | **POST** | 触发悬停效果（tooltip、提示框）、显示隐藏的UI交互元素 | 需要点击或其他操作 | api/hover.md |
+| `input_text` | **POST** | 向输入框输入文本内容、填表、搜索 | 只需点击、无需输入 | api/input_text.md |
+| `press_key` | **POST** | 触发快捷键功能（Ctrl+C复制）、发送特殊按键（Enter确认） | 鼠标操作即可完成 | api/press_key.md |
+| `wait` | **POST** | 等待UI动画完成、等待页面加载、等待异步响应 | 不需要等待，可立即执行下一步 | api/wait.md |
+| `batch` | **POST** | 执行多步骤的固定流程（如登录、导航）、减少网络请求次数 | 单步操作、需要根据结果动态决策 | api/batch.md |
 
 ---
 
@@ -251,20 +288,29 @@ Authorization: Bearer {token}
 
 ### 完整调用示例
 
-**示例：获取窗口列表（curl）**
-```bash
-# 基础URL和Token（从config.md获取）
-BASE_URL="http://localhost:12261"
-TOKEN="your-token-here"
+**重要**：注意 GET 和 POST 的区别
+- **GET**：没有请求体，只需要请求头
+- **POST**：必须有请求体（-d 参数），且需要 Content-Type 请求头
 
-# 调用get_window_list
+**示例1：GET 请求 - 获取窗口列表**
+```bash
+# GET 请求：没有 -d 参数，不需要 Content-Type
 curl -X GET \
   -H "Authorization: Bearer $TOKEN" \
   "$BASE_URL/api/get_window_list"
 ```
 
-**示例：点击操作（curl）**
+**示例2：GET 请求 - 健康检查**
 ```bash
+# GET 请求：最简单，只需要 Authorization
+curl -X GET \
+  -H "Authorization: Bearer $TOKEN" \
+  "$BASE_URL/api/health"
+```
+
+**示例3：POST 请求 - 点击操作**
+```bash
+# POST 请求：必须有 -d 参数和 Content-Type
 curl -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
@@ -272,8 +318,9 @@ curl -X POST \
   "$BASE_URL/api/click"
 ```
 
-**示例：截图（curl）**
+**示例4：POST 请求 - 截图**
 ```bash
+# POST 请求：必须有 -d 参数和 Content-Type
 curl -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
