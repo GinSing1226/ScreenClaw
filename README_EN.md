@@ -334,6 +334,28 @@ Specialized UI LLMs typically have fewer parameters and struggle to understand c
 
 ---
 
+## 💡 Platform Notes
+
+### Execution Side (Machine Running ScreenClaw)
+**Recommended: Windows**
+
+- ✅ Supports background screenshot (capture without stealing focus)
+- ✅ Supports non-intrusive mouse and keyboard operations (doesn't affect user)
+- ✅ Rich mobile emulator ecosystem (MuMu, BlueStacks, Nox, etc.)
+- ✅ Official screen casting tools from major phone brands (Huawei Multi-Screen Collaboration, Xiaomi Cross-Screen Collaboration, etc.)
+- ✅ Can automate most mobile apps
+
+### Caller Side (Machine Running AI Application)
+**Supports: Windows / macOS / Linux**
+
+Calls via HTTP API, cross-platform without restrictions.
+
+### Deployment Modes
+- **Local Mode**: Execution and caller on the same machine
+- **LAN Mode**: Different machines, must be on the same local network
+
+---
+
 ## 🏗️ Technical Architecture
 
 ```

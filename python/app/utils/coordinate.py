@@ -103,11 +103,8 @@ def restore_window_and_calc_coords(hwnd: int, x_pct: float, y_pct: float, main_w
         is_minimized = win32gui.IsIconic(main_window_id)
         is_visible = win32gui.IsWindowVisible(main_window_id)
 
-        print(f"[Restore] main_window_id={main_window_id}, is_minimized={is_minimized}, is_visible={is_visible}")
-
         # 恢复最小化的主窗口
         if is_minimized:
-            print("[Restore] Main window minimized, restoring...")
             win32gui.ShowWindow(main_window_id, win32con.SW_RESTORE)
             # 等待恢复完成
             start = time.time()
@@ -115,23 +112,18 @@ def restore_window_and_calc_coords(hwnd: int, x_pct: float, y_pct: float, main_w
             while time.time() - start < 2.0:
                 if win32gui.IsWindowVisible(main_window_id) and not win32gui.IsIconic(main_window_id):
                     restored = True
-                    print(f"[Restore] Main window restored in {time.time() - start:.2f}s")
                     break
                 time.sleep(0.01)
 
-            if not restored:
-                print("[Restore] WARNING: Main window restore timeout")
             time.sleep(0.3)  # 等待子窗口可用
 
         # 处理隐藏的主窗口
         elif not is_visible:
-            print("[Restore] Main window not visible, showing...")
             win32gui.ShowWindow(main_window_id, win32con.SW_SHOW)
             time.sleep(0.3)
 
     # 获取窗口矩形
     window_rect = process_service.get_window_rect(hwnd)
-    print(f"[Restore] hwnd={hwnd}, window_rect={window_rect}")
 
     if not window_rect:
         return None

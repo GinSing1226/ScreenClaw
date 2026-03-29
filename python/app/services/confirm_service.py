@@ -143,8 +143,6 @@ class ConfirmDialog:
 
     def show(self) -> ConfirmResult:
         """显示弹窗并返回结果"""
-        print(f"[ConfirmDialog] Starting show() for operation={self.operation}")
-
         root = tk.Tk()
         root.title("ScreenClaw " + self.get_text('title'))
         root.geometry("520x420")
@@ -171,8 +169,6 @@ class ConfirmDialog:
 
         # 确保窗口立即显示
         root.update()
-
-        print(f"[ConfirmDialog] Window created at ({x}, {y}), screen=({screen_width}, {screen_height})")
 
         # 配置根窗口背景
         root.configure(bg=self.BG_PRIMARY)
@@ -325,19 +321,15 @@ class ConfirmDialog:
         btn_frame.pack(fill=tk.X)
 
         def on_cancel():
-            print(f"[ConfirmDialog] on_cancel called")
             if self.timer_id:
                 root.after_cancel(self.timer_id)
             self.result = ConfirmResult(confirmed=False, remember=remember_var.get())
-            print(f"[ConfirmDialog] on_cancel: result.confirmed={self.result.confirmed}, remember={self.result.remember}")
             root.destroy()
 
         def on_confirm():
-            print(f"[ConfirmDialog] on_confirm called")
             if self.timer_id:
                 root.after_cancel(self.timer_id)
             self.result = ConfirmResult(confirmed=True, remember=remember_var.get())
-            print(f"[ConfirmDialog] on_confirm: result.confirmed={self.result.confirmed}, remember={self.result.remember}")
             root.destroy()
 
         # 右侧按钮容器
@@ -418,12 +410,9 @@ class ConfirmService:
                 with open(config_path, 'r', encoding='utf-8') as f:
                     config = json.load(f)
                     cls._language = config.get("ui", {}).get("language", "zh_CN")
-                    print(f"[ConfirmService] 加载语言设置: {cls._language}")
             except Exception as e:
-                print(f"[ConfirmService] 加载语言失败: {e}")
                 cls._language = "zh_CN"
         else:
-            print(f"[ConfirmService] 配置文件不存在，使用默认语言")
             cls._language = "zh_CN"
 
     @classmethod
@@ -434,21 +423,15 @@ class ConfirmService:
         # 同时加载语言设置
         cls._load_language()
 
-        print(f"[ConfirmService] 加载配置，路径: {config_path}")
-        print(f"[ConfirmService] 当前语言: {cls._language}")
-
         if os.path.exists(config_path):
             try:
                 with open(config_path, 'r', encoding='utf-8') as f:
                     config = json.load(f)
                     security = config.get("security", {})
                     cls._auto_confirm_processes = set(security.get("auto_confirm_processes", []))
-                print(f"[ConfirmService] 加载成功，自动同意列表: {cls._auto_confirm_processes}")
             except Exception as e:
-                print(f"[ConfirmService] 加载失败: {e}")
                 cls._auto_confirm_processes = set()
         else:
-            print(f"[ConfirmService] 配置文件不存在")
             cls._auto_confirm_processes = set()
 
     @classmethod
@@ -457,19 +440,13 @@ class ConfirmService:
         cls._auto_confirm_processes.add(process_name)
         config_path = cls._get_config_path()
 
-        print(f"[ConfirmService] 保存自动同意进程: {process_name}")
-        print(f"[ConfirmService] 配置路径: {config_path}")
-        print(f"[ConfirmService] 当前自动同意列表: {cls._auto_confirm_processes}")
-
         try:
             # 读取现有配置
             if os.path.exists(config_path):
                 with open(config_path, 'r', encoding='utf-8') as f:
                     config = json.load(f)
-                print(f"[ConfirmService] 读取现有配置成功")
             else:
                 config = {}
-                print(f"[ConfirmService] 配置文件不存在，创建新配置")
 
             if "security" not in config:
                 config["security"] = {}
@@ -482,12 +459,8 @@ class ConfirmService:
             # 写入配置
             with open(config_path, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2, ensure_ascii=False)
-
-            print(f"[ConfirmService] 保存配置成功")
         except Exception as e:
-            print(f"[ConfirmService] 保存配置失败: {e}")
-            import traceback
-            traceback.print_exc()
+            pass
 
     @classmethod
     def request_confirm(cls, ai_app_type: str, window_title: str, process_name: str,
@@ -507,29 +480,18 @@ class ConfirmService:
         # 每次请求前重新加载语言设置
         cls._load_language()
 
-        print(f"[ConfirmService] request_confirm 被调用: ai_app_type={ai_app_type}, process_name={process_name}, operation={operation}, detail={operation_detail}")
-        print(f"[ConfirmService] 当前语言: {cls._language}")
-        print(f"[ConfirmService] 当前自动同意列表: {cls._auto_confirm_processes}")
-
         # 检查目标进程是否在自动同意列表中
         if process_name in cls._auto_confirm_processes:
-            print(f"[ConfirmService] 进程在自动同意列表中，跳过弹窗")
             return ConfirmResult(confirmed=True, remember=True)
 
         # 在主线程中显示弹窗
-        print(f"[ConfirmService] 创建确认弹窗...")
         dialog = ConfirmDialog(ai_app_type, window_title, operation, operation_detail, cls._language)
         result = dialog.show()
-
-        print(f"[ConfirmService] 弹窗返回: confirmed={result.confirmed}, remember={result.remember}")
 
         # 如果用户选择记住，保存进程名
         if result.remember and result.confirmed:
             cls.save_auto_confirm_process(process_name)
-        else:
-            print(f"[ConfirmService] 未保存：remember={result.remember}, confirmed={result.confirmed}")
 
-        print(f"[ConfirmService] request_confirm 返回: confirmed={result.confirmed}")
         return result
 
 

@@ -124,7 +124,8 @@ const i18n = createI18n({
         confirm: '确认',
         close: '关闭',
         copy: '复制',
-        lineByLine: '每行一个'
+        lineByLine: '每行一个',
+        refresh: '刷新'
       },
       aiIntegrate: {
         button: 'AI自动集成',
@@ -286,7 +287,8 @@ const i18n = createI18n({
         confirm: 'Confirm',
         close: 'Close',
         copy: 'Copy',
-        lineByLine: 'one per line'
+        lineByLine: 'one per line',
+        refresh: 'Refresh'
       },
       aiIntegrate: {
         button: 'AI Auto Integrate',

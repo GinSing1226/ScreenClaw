@@ -221,6 +221,7 @@ pub async fn confirm_operation(
 pub struct LogItem {
     pub timestamp: String,
     pub source: String,          // 日志来源（文件名前缀，如 openclaw-test）
+    pub client_ip: String,       // 客户端IP地址
     pub process_id: i32,
     pub process_name: String,    // 被操作的应用名
     pub session_id: String,      // 会话ID
@@ -292,6 +293,10 @@ pub async fn get_logs() -> Result<Vec<LogItem>, String> {
                                     .unwrap_or("")
                                     .to_string(),
                                 source: source.clone(),
+                                client_ip: json.get("client_ip")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("unknown")
+                                    .to_string(),
                                 process_id: json.get("process_id")
                                     .and_then(|v| v.as_i64())
                                     .unwrap_or(0) as i32,

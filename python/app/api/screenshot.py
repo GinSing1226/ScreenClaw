@@ -3,7 +3,7 @@
 """
 import time
 import os
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, Request
 
 from app.models.request import ScreenshotRequest
 from app.models.response import (
@@ -30,12 +30,27 @@ import time
 router = APIRouter()
 
 
+def get_client_ip(request: Request) -> str:
+    """获取客户端IP地址"""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+
 @router.post("/screenshot")
 async def take_screenshot(
     request: ScreenshotRequest,
+    req: Request = None,
     authorization: str = Header(None)
 ):
     """截图"""
+    client_ip = get_client_ip(req) if req else "unknown"
     start_time = time.time()
 
     # 获取窗口信息
@@ -48,7 +63,8 @@ async def take_screenshot(
             process_name="",
             instruction="screenshot",
             params={},
-            result={"success": False, "message": "窗口不存在"}
+            result={"success": False, "message": "窗口不存在"},
+            client_ip=client_ip
         )
         return create_error_response("WINDOW_NOT_FOUND")
 
@@ -61,7 +77,8 @@ async def take_screenshot(
             process_name=process_info.process_name,
             instruction="screenshot",
             params={},
-            result={"success": False, "message": "进程在禁止清单中"}
+            result={"success": False, "message": "进程在禁止清单中"},
+            client_ip=client_ip
         )
         return create_error_response("PROCESS_BLOCKED")
 
@@ -70,10 +87,7 @@ async def take_screenshot(
         is_minimized = win32gui.IsIconic(request.main_window_id)
         is_visible = win32gui.IsWindowVisible(request.main_window_id)
 
-        print(f"[Screenshot] main_window_id={request.main_window_id}, is_minimized={is_minimized}, is_visible={is_visible}")
-
         if is_minimized:
-            print("[Screenshot] Main window minimized, restoring...")
             win32gui.ShowWindow(request.main_window_id, win32con.SW_RESTORE)
             # 等待恢复完成
             start = time.time()
@@ -81,16 +95,12 @@ async def take_screenshot(
             while time.time() - start < 2.0:
                 if win32gui.IsWindowVisible(request.main_window_id) and not win32gui.IsIconic(request.main_window_id):
                     restored = True
-                    print(f"[Screenshot] Window restored in {time.time() - start:.2f}s")
                     break
                 time.sleep(0.01)
 
-            if not restored:
-                print("[Screenshot] WARNING: Window restore timeout")
             time.sleep(0.3)  # 等待窗口稳定
 
         elif not is_visible:
-            print("[Screenshot] Main window not visible, showing...")
             win32gui.ShowWindow(request.main_window_id, win32con.SW_SHOW)
             time.sleep(0.3)
 
@@ -104,7 +114,8 @@ async def take_screenshot(
             process_name=process_info.process_name,
             instruction="screenshot",
             params={},
-            result={"success": False, "message": result.error}
+            result={"success": False, "message": result.error},
+            client_ip=client_ip
         )
         return create_error_response("SCREENSHOT_FAILED", result.error)
 
@@ -170,7 +181,8 @@ async def take_screenshot(
             "grid": request.grid.model_dump() if request.grid else None
         },
         result={"success": True, "image_path": image_path},
-        duration_ms=duration_ms
+        duration_ms=duration_ms,
+        client_ip=client_ip
     )
 
     return ScreenshotResponse(

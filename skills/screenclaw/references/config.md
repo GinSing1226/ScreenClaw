@@ -22,6 +22,44 @@ Bearer {token}
 
 - 由用户提供
 
+## AI应用类型 (ai_app_type)
+
+**规则**：**根据当前调用的 AI 应用类型填写**
+
+### 什么是 ai_app_type
+标识是哪个 AI 应用在调用 ScreenClaw API，用于：
+- 日志记录和追踪
+- 区分不同 AI 应用的操作
+- 统计和分析
+
+### 如何使用
+**判断当前是什么 AI 应用，就用什么值**
+
+| AI 应用 | ai_app_type 值 |
+|---------|---------------|
+| Claude Code | `claude_code` |
+| openclaw | `openclaw` |
+| ChatGPT | `chatgpt` |
+| 应用名称 | 应用名称（小写下划线） |
+
+### 示例
+```python
+# 如果是 Claude Code 在调用
+api_call(ai_app_type="claude_code", ...)
+
+# 如果是 ChatGPT 在调用
+api_call(ai_app_type="chatgpt", ...)
+
+# ❌ 错误做法：随便填值
+api_call(ai_app_type="random_value")  # 失去追踪意义
+api_call(ai_app_type="test")          # 不便于统计
+```
+
+### 命名规则
+- 小写字母
+- 使用下划线分隔单词
+- 简洁明了，能识别应用类型
+
 ## 会话ID (session_id) - 重要！
 
 **规则**：**整个会话过程中必须使用同一个 session_id**

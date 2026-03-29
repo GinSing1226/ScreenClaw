@@ -1,7 +1,7 @@
 """
 窗口管理API
 """
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, Request
 
 from app.models.request import GetWindowListRequest
 from app.models.response import (
@@ -15,12 +15,27 @@ from app.services.log_service import log_service
 router = APIRouter()
 
 
+def get_client_ip(request: Request) -> str:
+    """获取客户端IP地址"""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+
 @router.post("/get_window_list")
 async def get_window_list(
     request: GetWindowListRequest,
+    req: Request = None,
     authorization: str = Header(None)
 ):
     """获取窗口列表"""
+    client_ip = get_client_ip(req) if req else "unknown"
     # 记录日志
     log_service.log(
         ai_app_type=request.ai_app_type,
@@ -29,7 +44,8 @@ async def get_window_list(
         process_name="",
         instruction="get_window_list",
         params={"keyword": request.keyword},
-        result={"success": True}
+        result={"success": True},
+        client_ip=client_ip
     )
 
     # 获取窗口列表

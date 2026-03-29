@@ -24,10 +24,8 @@ y = {y}
 
 # API 层已经处理了最小化恢复，直接 PostMessage
 lParam = win32api.MAKELONG(x, y)
-print("[BackgroundClick] PostMessage to hwnd=%d, client=(%d, %d)" % (hwnd, x, y))
 win32gui.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, 0x0001, lParam)
 win32gui.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lParam)
-print("[BackgroundClick] Done")
 '''
 
 

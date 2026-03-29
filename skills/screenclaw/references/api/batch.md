@@ -44,42 +44,6 @@ description: 执行多步骤的固定流程（如登录、导航）、减少网�
 - `params`：指令参数（与单独调用该API时的参数相同）
 
 ### 请求示例
-
-#### 登录流程
-```json
-{
-  "ai_app_type": "claude_code",
-  "session_id": "session-123",
-  "window_id": 1001,
-  "instructions": [
-    { "action": "click", "params": { "x": 50, "y": 35 } },
-    { "action": "wait", "params": { "duration_ms": 200 } },
-    { "action": "input_text", "params": { "x": 50, "y": 35, "text": "username" } },
-    { "action": "wait", "params": { "duration_ms": 300 } },
-    { "action": "click", "params": { "x": 50, "y": 45 } },
-    { "action": "wait", "params": { "duration_ms": 200 } },
-    { "action": "input_text", "params": { "x": 50, "y": 45, "text": "password" } },
-    { "action": "wait", "params": { "duration_ms": 300 } },
-    { "action": "click", "params": { "x": 50, "y": 55 } },
-    { "action": "wait", "params": { "duration_ms": 1000 } }
-  ]
-}
-```
-
-#### 快捷键操作
-```json
-{
-  "ai_app_type": "claude_code",
-  "session_id": "session-123",
-  "window_id": 1001,
-  "instructions": [
-    { "action": "press_key", "params": { "key": "ctrl a" } },
-    { "action": "wait", "params": { "duration_ms": 100 } },
-    { "action": "input_text", "params": { "text": "new text" } }
-  ]
-}
-```
-
 #### 包含截图的操作流程
 ```json
 {

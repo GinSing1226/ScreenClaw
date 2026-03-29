@@ -1,21 +1,12 @@
 #!/usr/bin/env python3
 """
-ScreenClaw 截图获取脚本（独立版本）
+ScreenClaw 截图获取脚本
 
-可以直接调用，无需依赖其他模块。
+用法：python fetch_screenshot_cli.py <api_url> <token> <window_id> [session_id]
 
-用法一（推荐）：直接调用API
-    python fetch_screenshot.py <api_url> <token> <window_id> [session_id]
-
-示例：
-    python fetch_screenshot.py http://192.168.10.190:12261 TOKEN123 1380176
-    python fetch_screenshot.py http://192.168.10.190:12261 TOKEN123 1380176 my-session
-
-用法二（备用）：处理已保存的JSON响应（会自动删除该JSON文件）
-    python fetch_screenshot.py <json_file_path> <api_url>
-
-示例：
-    python fetch_screenshot.py C:\\Users\\xxx\\AppData\\Local\\Temp\\screenshot_response.json http://192.168.10.190:12261
+失败时请使用：
+  Windows: fetch_screenshot_cli.ps1
+  macOS/Linux: fetch_screenshot_cli.sh
 """
 
 import sys
@@ -130,41 +121,8 @@ def main():
         print(f"API 调用失败: {e}")
         sys.exit(1)
 
-    output_path = process_result(result, screenshot_url)
+    output_path = process_result(result, api_url)
     if output_path:
-        print(output_path)
-
-    # 处理响应
-    image_path = result["data"]["image_path"]
-    image_base64 = result["data"]["image_base64"]
-
-    # 判断本地还是局域网
-    is_local = any(indicator in screenshot_url.lower() for indicator in ["localhost", "127.0.0.1", "::1"])
-
-    if is_local:
-        # 本地场景：直接返回路径
-        print(image_path)
-    else:
-        # 局域网场景：保存到本地
-        # 从 image_path 中提取目录名和文件名
-        original_path = Path(image_path)
-        dir_name = original_path.parent.name
-        filename = original_path.name
-
-        # 确定保存目录
-        if os.name == 'nt':  # Windows
-            base_dir = os.path.expandvars("%APPDATA%\\screenclaw\\data")
-        else:  # Linux/macOS
-            base_dir = os.path.expanduser("~/.local/share/screenclaw/data")
-
-        output_dir = Path(base_dir) / dir_name
-        output_dir.mkdir(parents=True, exist_ok=True)
-        output_path = output_dir / filename
-
-        # 保存图片
-        with open(output_path, "wb") as f:
-            f.write(base64.b64decode(image_base64))
-
         print(output_path)
 
 

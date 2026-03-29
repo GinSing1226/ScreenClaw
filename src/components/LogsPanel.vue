@@ -13,12 +13,22 @@ const {
   uniqueAiApps,
   uniqueTargetApps,
   filteredLogs,
+  loadLogs,
   clearFilters,
   translateInstruction,
   formatTime
 } = useLogs()
 
 const collapsed = ref(false)
+const refreshing = ref(false)
+
+const handleRefresh = async () => {
+  refreshing.value = true
+  await loadLogs()
+  setTimeout(() => {
+    refreshing.value = false
+  }, 300)
+}
 
 const emit = defineEmits<{
   viewDetail: [log: LogItem]
@@ -107,6 +117,16 @@ const emit = defineEmits<{
           :placeholder="t('logs.searchPlaceholder')"
           class="search-input"
         />
+        <button
+          class="btn-refresh"
+          @click="handleRefresh"
+          :disabled="refreshing || logsLoading"
+          :title="t('common.refresh') || 'Refresh'"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ spinning: refreshing || logsLoading }">
+            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+          </svg>
+        </button>
       </div>
 
       <!-- 日志列表 -->
@@ -118,6 +138,7 @@ const emit = defineEmits<{
           @click="emit('viewDetail', log)"
         >
           <div class="log-time">{{ formatTime(log.timestamp) }}</div>
+          <div class="log-ip">{{ log.client_ip || 'unknown' }}</div>
           <div class="log-process">{{ log.process_name }}</div>
           <div class="log-instruction">{{ translateInstruction(log.instruction) }}</div>
           <div class="log-result" :class="{ success: log.result.success, error: !log.result.success }">
@@ -363,6 +384,45 @@ const emit = defineEmits<{
   color: var(--sc-text-muted);
 }
 
+.btn-refresh {
+  margin-left: var(--sc-space-2);
+  padding: var(--sc-space-2);
+  background: var(--sc-bg-elevated);
+  border: 1px solid var(--sc-border-strong);
+  border-radius: 6px;
+  color: var(--sc-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.btn-refresh:hover:not(:disabled) {
+  background: var(--sc-bg-secondary);
+  border-color: var(--sc-accent);
+  color: var(--sc-accent);
+}
+
+.btn-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-refresh svg.spinning {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .logs-list {
   flex: 1;
   overflow-y: auto;
@@ -372,7 +432,7 @@ const emit = defineEmits<{
 
 .log-item {
   display: grid;
-  grid-template-columns: 90px 140px 1fr 40px;
+  grid-template-columns: 70px 120px 130px 1fr 40px;
   gap: var(--sc-space-3);
   padding: var(--sc-space-3) var(--sc-space-5);
   border-bottom: 1px solid var(--sc-border);
@@ -389,11 +449,26 @@ const emit = defineEmits<{
 .log-time {
   color: var(--sc-text-tertiary);
   font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.log-ip {
+  color: var(--sc-text-secondary);
+  font-size: 11px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .log-process {
   color: var(--sc-accent-dark);
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .log-instruction {

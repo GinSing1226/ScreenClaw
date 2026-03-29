@@ -295,7 +295,6 @@ class LogService:
 
     def shutdown(self):
         """关闭日志服务，刷新所有待写入日志"""
-        print("[LOG] Shutting down log service...")
         self._stop_event.set()
 
         # 等待写入线程结束（最多5秒）
@@ -304,7 +303,6 @@ class LogService:
 
         # 最后一次刷新
         self._flush_batch()
-        print("[LOG] Log service shutdown complete")
 
 
 # 全局日志服务实例

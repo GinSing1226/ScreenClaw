@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 export interface LogItem {
   timestamp: string
   source: string
+  client_ip: string
   process_id: number
   process_name: string
   session_id: string

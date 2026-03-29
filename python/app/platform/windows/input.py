@@ -312,12 +312,10 @@ newline_vks = eval(base64.b64decode("{newline_vks_b64}").decode("utf-8"))
 # 如果有坐标，PostMessage 点击获取焦点
 if has_coord:
     x, y = {x}, {y}
-    print("[BgInputText] Clicking at client coords=(%d, %d), hwnd=%d" % (x, y, hwnd))
     lParam = win32api.MAKELONG(x, y)
     win32gui.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, 0x0001, lParam)
     win32gui.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lParam)
     time.sleep(0.1)
-    print("[BgInputText] Click done")
 
 # 逐字符发送
 for char in text:
@@ -422,32 +420,25 @@ virtual_y = {virtual_y}
 
 # API 层已经处理了最小化恢复，直接计算屏幕坐标
 screen_x, screen_y = win32gui.ClientToScreen(hwnd, (virtual_x, virtual_y))
-print("[HijackClick] virtual=(%d, %d), screen=(%d, %d)" % (virtual_x, virtual_y, screen_x, screen_y))
 
 # Hijack 模式：设置焦点并点击
 main_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
-print("[HijackClick] Setting foreground window...")
 target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
 current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
 ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
 win32gui.SetForegroundWindow(main_hwnd)
 time.sleep(0.3)
 
-print("[HijackClick] Setting cursor to (%d, %d)..." % (screen_x, screen_y))
 win32api.SetCursorPos((screen_x, screen_y))
-actual_pos = win32api.GetCursorPos()
-print("[HijackClick] Actual cursor pos: (%d, %d)" % (actual_pos[0], actual_pos[1]))
 time.sleep(0.3)
 
 # 用 SendMessage 点击（virtual_x, virtual_y 是客户区坐标）
 lParam = win32api.MAKELONG(virtual_x, virtual_y)
-print("[HijackClick] SendMessage click to hwnd=%d, client=(%d, %d)" % (hwnd, virtual_x, virtual_y))
 win32gui.SendMessage(hwnd, win32con.WM_LBUTTONDOWN, 0x0001, lParam)
 time.sleep(0.05)
 win32gui.SendMessage(hwnd, win32con.WM_LBUTTONUP, 0, lParam)
 
 # 恢复状态
-print("[HijackClick] Restoring state...")
 try:
     time.sleep(0.01)
     win32api.SetCursorPos(old_pos)
@@ -455,7 +446,6 @@ try:
 except:
     pass
 ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
-print("[HijackClick] Done")
 '''
         return self._run_subprocess(code, timeout=10)
 
@@ -473,15 +463,11 @@ main_hwnd = {main_hwnd}
 screen_x = {screen_x}
 screen_y = {screen_y}
 
-print("[HijackRightClick] hwnd=%d, main=%d, target_screen=(%d, %d)" % (hwnd, main_hwnd, screen_x, screen_y))
-
 # 仅在窗口最小化或隐藏时才恢复
 if win32gui.IsIconic(main_hwnd):
-    print("[HijackRightClick] Main window is minimized, restoring...")
     win32gui.ShowWindow(main_hwnd, win32con.SW_RESTORE)
     time.sleep(0.2)
 elif not win32gui.IsWindowVisible(main_hwnd):
-    print("[HijackRightClick] Main window not visible, showing...")
     win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
     time.sleep(0.1)
 
@@ -520,15 +506,11 @@ screen_x = {screen_x}
 screen_y = {screen_y}
 duration_ms = {duration_ms}
 
-print("[HijackLongPress] hwnd=%d, main=%d, target_screen=(%d, %d), duration=%dms" % (hwnd, main_hwnd, screen_x, screen_y, duration_ms))
-
 # 仅在窗口最小化或隐藏时才恢复
 if win32gui.IsIconic(main_hwnd):
-    print("[HijackLongPress] Main window is minimized, restoring...")
     win32gui.ShowWindow(main_hwnd, win32con.SW_RESTORE)
     time.sleep(0.2)
 elif not win32gui.IsWindowVisible(main_hwnd):
-    print("[HijackLongPress] Main window not visible, showing...")
     win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
     time.sleep(0.1)
 
@@ -569,11 +551,9 @@ ey = {ey}
 
 # 仅在窗口最小化或隐藏时才恢复
 if win32gui.IsIconic(main_hwnd):
-    print("[HijackSwipe] Main window is minimized, restoring...")
     win32gui.ShowWindow(main_hwnd, win32con.SW_RESTORE)
     time.sleep(0.2)
 elif not win32gui.IsWindowVisible(main_hwnd):
-    print("[HijackSwipe] Main window not visible, showing...")
     win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
     time.sleep(0.1)
 
@@ -630,15 +610,11 @@ screen_x = {screen_x}
 screen_y = {screen_y}
 wheel_delta = {wheel_delta}
 
-print("[HijackScroll] hwnd=%d, main=%d, scroll_screen=(%d, %d), delta=%d" % (hwnd, main_hwnd, screen_x, screen_y, wheel_delta))
-
 # 仅在窗口最小化或隐藏时才恢复
 if win32gui.IsIconic(main_hwnd):
-    print("[HijackScroll] Main window is minimized, restoring...")
     win32gui.ShowWindow(main_hwnd, win32con.SW_RESTORE)
     time.sleep(0.2)
 elif not win32gui.IsWindowVisible(main_hwnd):
-    print("[HijackScroll] Main window not visible, showing...")
     win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
     time.sleep(0.1)
 
@@ -669,28 +645,17 @@ import win32gui, win32api, win32con, ctypes, time
 old_fg = win32gui.GetForegroundWindow()
 old_pos = win32api.GetCursorPos()
 
-# 获取窗口信息用于调试
-window_rect = win32gui.GetWindowRect({hwnd})
-client_rect = win32gui.GetClientRect({hwnd})
-
 main_hwnd = {main_hwnd}
 hwnd = {hwnd}
 screen_x = {screen_x}
 screen_y = {screen_y}
 duration_ms = {duration_ms}
 
-print("[HijackHover] hwnd=%d, main=%d" % (hwnd, main_hwnd))
-print("[HijackHover] window_rect=(%d, %d, %d, %d)" % (window_rect[0], window_rect[1], window_rect[2], window_rect[3]))
-print("[HijackHover] client_rect=(%d, %d, %d, %d)" % (client_rect[0], client_rect[1], client_rect[2], client_rect[3]))
-print("[HijackHover] target_screen_coords=(%d, %d), duration=%dms" % (screen_x, screen_y, duration_ms))
-
 # 仅在窗口最小化或隐藏时才恢复
 if win32gui.IsIconic(main_hwnd):
-    print("[HijackHover] Main window is minimized, restoring...")
     win32gui.ShowWindow(main_hwnd, win32con.SW_RESTORE)
     time.sleep(0.2)
 elif not win32gui.IsWindowVisible(main_hwnd):
-    print("[HijackHover] Main window not visible, showing...")
     win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
     time.sleep(0.1)
 
@@ -701,10 +666,7 @@ win32gui.SetForegroundWindow(main_hwnd)
 time.sleep(0.1)
 
 # 用 win32api 移动鼠标到目标位置
-print("[HijackHover] Moving to (%d, %d) with SetCursorPos..." % (screen_x, screen_y))
 win32api.SetCursorPos((screen_x, screen_y))
-actual_pos = win32api.GetCursorPos()
-print("[HijackHover] After SetCursorPos, actual pos=(%d, %d)" % (actual_pos[0], actual_pos[1]))
 
 # 停留指定时长
 if duration_ms > 0:
@@ -745,11 +707,9 @@ has_coord = {has_coord}
 
 # 仅在窗口最小化或隐藏时才恢复
 if win32gui.IsIconic(main_hwnd):
-    print("[HijackInputText] Main window is minimized, restoring...")
     win32gui.ShowWindow(main_hwnd, win32con.SW_RESTORE)
     time.sleep(0.2)
 elif not win32gui.IsWindowVisible(main_hwnd):
-    print("[HijackInputText] Main window not visible, showing...")
     win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
     time.sleep(0.1)
 
@@ -848,11 +808,9 @@ old_pos = win32api.GetCursorPos()
 
 # 仅在窗口最小化或隐藏时才恢复
 if win32gui.IsIconic(main_hwnd):
-    print("[HijackKeyPress] Main window is minimized, restoring...")
     win32gui.ShowWindow(main_hwnd, win32con.SW_RESTORE)
     time.sleep(0.2)
 elif not win32gui.IsWindowVisible(main_hwnd):
-    print("[HijackKeyPress] Main window not visible, showing...")
     win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
     time.sleep(0.1)
 
