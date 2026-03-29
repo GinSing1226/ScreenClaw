@@ -20,6 +20,19 @@ from app.utils.coordinate import restore_window_and_calc_coords
 router = APIRouter()
 
 
+def decode_unicode_escapes(text: str) -> str:
+    """解码可能的 unicode 转义字符串 (如 \\u4f60\\u597d)"""
+    try:
+        # 如果文本包含字面量 \u 转义序列，尝试解码
+        if "\\u" in text:
+            # 使用 raw_unicode_escape 处理字面量转义
+            return text.encode("raw_unicode_escape").decode("unicode_escape")
+        return text
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        # 解码失败，返回原始文本
+        return text
+
+
 def get_client_ip(request: Request) -> str:
     """获取客户端IP地址"""
     forwarded = request.headers.get("X-Forwarded-For")
@@ -71,7 +84,7 @@ async def input_text(request: InputTextRequest, req: Request = None, authorizati
             window_title=window_title,
             process_name=process_info.process_name,
             operation="输入文本",
-            operation_detail=f"输入：{request.text[:50]}{'...' if len(request.text) > 50 else ''}"
+            operation_detail=f"输入：{decoded_text[:50]}{'...' if len(decoded_text) > 50 else ''}"
         )
 
         if not confirm_result.confirmed:
@@ -91,12 +104,15 @@ async def input_text(request: InputTextRequest, req: Request = None, authorizati
             return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
         physical_x, physical_y, virtual_x, virtual_y = coords
 
+    # 解码可能的 unicode 转义字符
+    decoded_text = decode_unicode_escapes(request.text)
+
     # 执行输入
     inject_result = windows_input.input_text(
         request.window_id,
         physical_x, physical_y,
         virtual_x, virtual_y,
-        request.text,
+        decoded_text,
         request.newline_key,
         request.action_method
     )
@@ -111,7 +127,7 @@ async def input_text(request: InputTextRequest, req: Request = None, authorizati
         instruction="input_text",
         params={
             "x": request.x, "y": request.y,
-            "text_length": len(request.text),
+            "text_length": len(decoded_text),
             "action_method": request.action_method
         },
         result={"success": inject_result.success, "message": inject_result.error},

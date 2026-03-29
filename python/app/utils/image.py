@@ -131,14 +131,14 @@ def generate_screenshot_filename() -> str:
     """
     生成截图文件名
 
-    格式: screenshot-hhmmss-rand4.png
+    格式: screenshot_hhmmss_rand4.png
 
     Returns:
         文件名
     """
     time_str = datetime.now().strftime("%H%M%S")
     rand_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
-    return f"screenshot-{time_str}-{rand_str}.png"
+    return f"screenshot_{time_str}_{rand_str}.png"
 
 
 def generate_data_dir(
@@ -150,7 +150,7 @@ def generate_data_dir(
     """
     生成数据存储目录
 
-    格式: 项目根目录/data/ai_app_type-session_id[-window_id]-yyyy-mm-dd/
+    格式: 项目根目录/data/ai_app_type_session_id[_window_id]_yyyy-mm-dd/
 
     Args:
         base_dir: 基础目录名（如 "data"）
@@ -166,9 +166,9 @@ def generate_data_dir(
 
     date_str = datetime.now().strftime("%Y-%m-%d")
     if window_id:
-        dir_name = f"{ai_app_type}-{session_id}-{window_id}-{date_str}"
+        dir_name = f"{ai_app_type}_{session_id}_{window_id}_{date_str}"
     else:
-        dir_name = f"{ai_app_type}-{session_id}-{date_str}"
+        dir_name = f"{ai_app_type}_{session_id}_{date_str}"
     dir_path = project_data_dir / dir_name
 
     if not dir_path.exists():

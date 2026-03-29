@@ -61,7 +61,7 @@ class LogService:
     def _get_log_file_path(self, ai_app_type: str, session_id: str) -> str:
         """获取日志文件路径"""
         date_str = datetime.now().strftime("%Y-%m-%d")
-        filename = f"{ai_app_type}-{session_id}-{date_str}.jsonl"
+        filename = f"{ai_app_type}_{session_id}_{date_str}.jsonl"
         return os.path.join(self.log_dir, filename)
 
     def _start_writer_thread(self):
