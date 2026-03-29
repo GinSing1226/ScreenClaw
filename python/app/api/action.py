@@ -24,7 +24,7 @@ from app.services.process_service import process_service
 from app.services.log_service import log_service
 from app.platform.windows.input import windows_input
 from app.utils.coordinate import restore_window_and_calc_coords
-from app.api.decorators import verify_request_common, get_client_ip
+from app.api.decorators import with_verification, log_and_format
 
 router = APIRouter()
 
@@ -73,21 +73,15 @@ def _check_hijack_confirm(request, process_info, operation: str, detail: str) ->
 
 
 @router.post("/click")
+@with_verification
+@log_and_format
 async def click(request: ClickRequest, req: Request = None, authorization: str = Header(None)):
     """点击"""
-    client_ip = get_client_ip(req) if req else "unknown"
-
-    # 使用通用验证逻辑
-    verification = verify_request_common(request, client_ip)
-    if "error" in verification:
-        return create_error_response(verification["error"])
-
-    process_info = verification["process_info"]
-    start_time = verification["start_time"]
+    # 装饰器已注入：request.process_info, request.start_time, request.client_ip
 
     # hijack 模式需要用户确认
     confirm_error = _check_hijack_confirm(
-        request, process_info, "点击", f"坐标: ({request.x}, {request.y})"
+        request, request.process_info, "点击", f"坐标: ({request.x}, {request.y})"
     )
     if confirm_error:
         return confirm_error
@@ -109,20 +103,6 @@ async def click(request: ClickRequest, req: Request = None, authorization: str =
         physical_x, physical_y,
         virtual_x, virtual_y,
         request.action_method
-    )
-
-    duration_ms = int((time.time() - start_time) * 1000)
-
-    log_service.log(
-        ai_app_type=request.ai_app_type,
-        session_id=request.session_id,
-        window_id=request.window_id,
-        process_name=process_info.process_name,
-        instruction="click",
-        params={"x": request.x, "y": request.y, "action_method": request.action_method},
-        result={"success": inject_result.success, "message": inject_result.error},
-        duration_ms=duration_ms,
-        client_ip=client_ip
     )
 
     if inject_result.success:
