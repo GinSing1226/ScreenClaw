@@ -4,6 +4,7 @@
 """
 import os
 from typing import List, Optional, Tuple
+from functools import lru_cache
 
 import win32gui
 import win32process
@@ -16,6 +17,9 @@ from app.models.response import ProcessInfo, ChildWindow
 class ProcessService:
     """进程管理服务"""
 
+    # 进程名缓存大小
+    _PROCESS_NAME_CACHE_SIZE = 256
+
     # 常见的渲染窗口类名
     RENDER_WINDOW_CLASSES = [
         'Qt5QWindowIcon',      # Qt 渲染窗口
@@ -27,6 +31,10 @@ class ProcessService:
         'SDL_app',             # SDL 应用
         'GLFW',                # GLFW 窗口
     ]
+
+    def __init__(self):
+        """初始化进程服务"""
+        pass
 
     def get_process_list(self, keyword: str = "", include_children: bool = False, children_filter: str = "titled") -> List[ProcessInfo]:
         """获取进程列表（包含子窗口信息）
@@ -53,7 +61,7 @@ class ProcessService:
             _, process_id = win32process.GetWindowThreadProcessId(hwnd)
 
             # 获取进程名
-            process_name = self._get_process_name(process_id)
+            process_name = self._get_process_name_impl(process_id)
             if not process_name:
                 return True
 
@@ -118,8 +126,9 @@ class ProcessService:
 
         return children
 
-    def _get_process_name(self, process_id: int) -> Optional[str]:
-        """获取进程名"""
+    @lru_cache(maxsize=_PROCESS_NAME_CACHE_SIZE)
+    def _get_process_name_impl(self, process_id: int) -> Optional[str]:
+        """获取进程名（实际实现，带LRU缓存）"""
         try:
             # 打开进程
             PROCESS_QUERY_INFORMATION = 0x0400
@@ -144,6 +153,10 @@ class ProcessService:
 
         except Exception:
             return None
+
+    def clear_cache(self):
+        """清除进程名缓存"""
+        self._get_process_name_impl.cache_clear()
 
     def get_window_rect(self, hwnd: int) -> Optional[Tuple[int, int, int, int]]:
         """获取窗口矩形"""
@@ -174,7 +187,7 @@ class ProcessService:
             window_title = win32gui.GetWindowText(window_id) or ""
 
             # 获取进程名
-            process_name = self._get_process_name(process_id)
+            process_name = self._get_process_name_impl(process_id)
 
             # 获取子窗口
             child_windows = self._get_child_windows_info(window_id)
