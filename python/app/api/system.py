@@ -374,11 +374,12 @@ async def _execute_single_instruction(
             # 转换为base64
             image_base64 = image_to_base64(image)
 
-            # 本地请求返回路径，远程请求只返回base64
+            # 本地请求只返回路径，远程请求只返回base64
             is_local = is_local_request(client_ip)
-            result_data = {"image_base64": image_base64}
             if is_local:
-                result_data["image_path"] = os.path.abspath(image_path)
+                result_data = {"image_path": os.path.abspath(image_path)}
+            else:
+                result_data = {"image_base64": image_base64}
 
             return {
                 "success": True,

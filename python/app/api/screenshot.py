@@ -191,11 +191,14 @@ async def take_screenshot(
         client_ip=client_ip
     )
 
-    # 本地请求返回路径，远程请求只返回base64（避免误导AI）
+    # 本地请求只返回路径，远程请求只返回base64
     is_local = is_local_request(client_ip)
-    screenshot_data = ScreenshotData(image_base64=image_base64)
     if is_local:
-        screenshot_data.image_path = os.path.abspath(image_path)
+        # 本地：只返回路径，减少上下文
+        screenshot_data = ScreenshotData(image_path=os.path.abspath(image_path))
+    else:
+        # 远程：只返回base64
+        screenshot_data = ScreenshotData(image_base64=image_base64)
 
     return ScreenshotResponse(
         success=True,
