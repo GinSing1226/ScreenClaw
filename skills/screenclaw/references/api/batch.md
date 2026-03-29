@@ -100,19 +100,11 @@ description: 执行多步骤的固定流程（如登录、导航）、减少网�
 
 ---
 
-## 响应处理（强制要求）
+## 响应格式
 
-**重要**：包含截图的 batch 响应，必须使用 `scripts/` 文件夹中的现成脚本处理。
+### 包含截图的响应
 
-### 为什么强制
-- 脚本已经处理了本地/局域网场景判断
-- 脚本已经正确提取了目录名和文件名
-- 自己写代码会导致图片保存位置混乱
-
-### 包含截图指令时的处理
-
-当 batch 中包含 `screenshot` 指令时，响应的 `results` 数组中对应位置会包含截图数据：
-
+**本地请求**（localhost, 127.0.0.1, ::1）：
 ```json
 {
   "success": true,
@@ -125,14 +117,88 @@ description: 执行多步骤的固定流程（如登录、导航）、减少网�
         "success": true,
         "message": "截图完成",
         "data": {
-          "image_path": "D:/screenClaw/data/.../screenshot.png",
-          "image_base64": "iVBORw0KGgo..."
+          "image_path": "D:\\screenClaw\\data\\session-123\\screenshot_20250329_143025.png"
         }
       },
       { "success": true, "message": "指令已发送，可截图验证结果" }
     ]
   }
 }
+```
+
+**远程请求**（局域网IP）：
+```json
+{
+  "success": true,
+  "data": {
+    "executed_count": 4,
+    "results": [
+      { "success": true, "message": "指令已发送" },
+      { "success": true, "message": "等待完成" },
+      {
+        "success": true,
+        "message": "截图完成",
+        "data": {
+          "image_path": "D:\\screenClaw\\data\\session-123\\screenshot_20250329_143025.png",
+          "image_base64": "iVBORw0KGgoAAAANSUhEUgAA..."
+        }
+      },
+      { "success": true, "message": "指令已发送，可截图验证结果" }
+    ]
+  }
+}
+```
+
+**区别**：
+- 本地请求：截图数据只返回 `image_path`（图片已在服务端保存）
+- 远程请求：截图数据返回 `image_path` + `image_base64`（客户端需自行解码保存）
+
+---
+
+## 响应处理
+
+### 本地请求（localhost, 127.0.0.1, ::1）
+
+**直接使用返回的 `image_path`，无需脚本**
+
+```python
+results = response.json()["data"]["results"]
+for item in results:
+    if item.get("data", {}).get("image_path"):
+        image_path = item["data"]["image_path"]
+        # 直接读取图片
+        with open(image_path, "rb") as f:
+            image_data = f.read()
+```
+
+### 远程请求（局域网IP）
+
+**必须使用脚本处理 base64**
+
+```bash
+# Python（推荐，跨平台）
+python scripts/batch_results_processor.py <api_url> <token> <json_response_file>
+
+# PowerShell（Windows）
+.\scripts\batch_results_processor.ps1 <api_url> <token> <json_response_file>
+```
+
+脚本会自动：
+1. 遍历 `results` 数组找到截图数据
+2. 解码 `image_base64`
+3. 保存到正确位置
+4. 返回图片路径列表
+
+### ❌ 禁止以下做法
+
+```python
+# ❌ 错误：本地请求也调用脚本（多余）
+process_batch_results(...)  # 不需要
+
+# ❌ 错误：远程请求自己写保存逻辑（路径会混乱）
+if "image_base64" in item["data"]:
+    with open("screenshot.png", "wb") as f:
+        f.write(base64.b64decode(item["data"]["image_base64"]))
 ```
 
 ### 调用方式（Python）

@@ -230,7 +230,7 @@ pub struct LogItem {
     pub result: serde_json::Value,
 }
 
-/// 从日志文件名提取信息（如 openclaw-test-2026-03-26.jsonl）
+/// 从日志文件名提取信息（如 openclaw__test__2026-03-26.jsonl）
 /// 返回 (source, session_id)
 /// - source: openclaw（AI应用名）
 /// - session_id: test（会话ID）
@@ -238,19 +238,13 @@ fn extract_info_from_filename(filename: &str) -> (String, String) {
     // 移除 .jsonl 扩展名
     let name = filename.strip_suffix(".jsonl").unwrap_or(filename);
 
-    // 分割文件名：openclaw-test-2026-03-26
-    let parts: Vec<&str> = name.split('-').collect();
+    // 按双下划线分割：{app}__{session}__{date}
+    let parts: Vec<&str> = name.split("__").collect();
 
-    if parts.len() >= 5 {
-        // 格式：{source}-{session_id}-{YYYY}-{MM}-{DD}
-        // 检查最后3个部分是否是日期
-        let date_start = parts.len() - 3;
-        if parts[date_start].len() == 4 && parts[date_start].chars().all(|c| c.is_numeric()) {
-            // 找到日期部分
-            let source = parts[0].to_string();
-            let session_id = parts[1..date_start].join("-");
-            return (source, session_id);
-        }
+    if parts.len() >= 3 {
+        let source = parts[0].to_string();
+        let session_id = parts[1].to_string();
+        return (source, session_id);
     }
 
     // 默认情况：返回整个名称作为 source，空字符串作为 session_id

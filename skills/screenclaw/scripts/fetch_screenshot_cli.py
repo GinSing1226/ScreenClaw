@@ -39,23 +39,33 @@ def process_result(result, api_url):
         # 本地场景：直接返回路径
         return image_path
     else:
-        # 局域网场景：保存到本地
-        # 从 image_path 中提取目录名和文件名
+        # Remote scenario: save to local
+        # Extract directory name and filename from image_path
         original_path = Path(image_path)
         dir_name = original_path.parent.name
         filename = original_path.name
 
-        # 确定保存目录
+        # Determine save directory
         if os.name == 'nt':  # Windows
             base_dir = os.path.expandvars("%APPDATA%\\screenclaw\\data")
         else:  # Linux/macOS
             base_dir = os.path.expanduser("~/.local/share/screenclaw/data")
 
         output_dir = Path(base_dir) / dir_name
-        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Handle directory name encoding issues
+        try:
+            output_dir.mkdir(parents=True, exist_ok=True)
+        except (OSError, UnicodeError):
+            # Fallback: use timestamp as directory name if original name fails
+            import time
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            output_dir = Path(base_dir) / timestamp
+            output_dir.mkdir(parents=True, exist_ok=True)
+
         output_path = output_dir / filename
 
-        # 保存图片
+        # Save image
         with open(output_path, "wb") as f:
             f.write(base64.b64decode(image_base64))
 

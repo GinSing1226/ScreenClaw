@@ -1,5 +1,7 @@
 # ScreenClaw 可复用脚本
 
+> **前置条件**：先确认 ScreenClaw 服务已启动，并已获取 API 地址和 Token
+
 本目录包含 ScreenClaw 的可复用脚本，供 Executor 角色调用。
 
 ## 环境选择
@@ -8,7 +10,7 @@
 
 | Shell 环境 | 使用脚本 |
 |-----------|---------|
-| bash / zsh | `.py` 脚本 |
+| bash / zsh | `.py` 或 `.sh` 脚本 |
 | PowerShell | `.ps1` 脚本 |
 | 不确定 | 优先 `.py` 脚本（更通用） |
 
@@ -33,8 +35,23 @@
 python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> [session_id]
 
 # PowerShell（Windows）
-.\scripts\fetch_screenshot_cli.ps1 <api_url> <token> <window_id> [session_id]
+powershell -ExecutionPolicy Bypass -File scripts/fetch_screenshot_cli.ps1 <api_url> <token> <window_id> [session_id]
 ```
+
+**参数说明**：
+- `api_url`：ScreenClaw 服务地址（如 `http://localhost:12261`）
+- `token`：认证令牌
+- `window_id`：目标窗口 ID（从 get_window_list 获取）
+- `session_id`：会话 ID（可选，默认 "default"）
+
+**降级路径**：
+```
+Python脚本 → PowerShell脚本 → 报告用户无法执行
+```
+
+**坑点**：
+- ⚠️ 中文目录名：某些环境下中文目录名可能创建失败，脚本会自动 fallback 到时间戳目录名
+- ⚠️ 本地 vs 远程：不同场景返回格式不同，脚本会自动处理
 
 ---
 
@@ -53,4 +70,6 @@ python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> [session_id
 
 1. **环境判断**：先确认当前 shell 环境，再选择对应脚本
 2. **session_id 保持一致**：整个会话使用同一个 session_id
-3. **临时文件**：如果需要先保存 JSON，必须保存到系统临时目录
+3. **中文输入**：使用Unicode编码（如`\u4f60\u597d`）而非原始中文
+4. **整行复制**：复制整行命令，不要分段复制
+5. **只替换参数**：将参数替换为实际值，不要修改命令结构

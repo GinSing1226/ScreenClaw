@@ -89,23 +89,77 @@ Content-Type: application/json
 
 ---
 
+## 响应格式
+
+**本地请求**（localhost, 127.0.0.1, ::1）：
+```json
+{
+  "success": true,
+  "data": {
+    "image_path": "D:\\screenClaw\\data\\session-123\\screenshot_20250329_143025.png"
+  }
+}
+```
+
+**远程请求**（局域网IP）：
+```json
+{
+  "success": true,
+  "data": {
+    "image_base64": "iVBORw0KGgoAAAANSUhEUgAA..."
+  }
+}
+```
+
+**区别**：
+- 本地请求：只返回 `image_path`（图片已在服务端保存）
+- 远程请求：返回 `image_base64`（客户端需自行解码保存）
+
+---
+
 ## 响应处理
 
-**推荐**：使用脚本处理，自动判断本地/局域网场景
+### 本地请求（localhost, 127.0.0.1, ::1）
+
+**直接使用返回的 `image_path`，无需脚本**
+
+```python
+response = requests.post(url, headers=headers, json=body)
+result = response.json()
+image_path = result["data"]["image_path"]
+# 直接读取图片
+with open(image_path, "rb") as f:
+    image_data = f.read()
+```
+
+### 远程请求（局域网IP）
+
+**必须使用脚本处理 base64**
 
 ```bash
-# Python脚本（优先）
+# Python（推荐，跨平台）
 python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> [session_id]
 
-# PowerShell脚本（Windows）
+# PowerShell（Windows）
 .\scripts\fetch_screenshot_cli.ps1 <api_url> <token> <window_id> [session_id]
 ```
 
 脚本会自动：
-1. 调用API获取响应
-2. 判断本地/局域网场景
-3. 保存图片到合适位置
-4. 返回图片路径
+1. 解码 `image_base64`
+2. 保存到 `%APPDATA%\screenclaw\data`（Windows）或 `~/.local/share/screenclaw/data`（Linux/macOS）
+3. 返回保存后的图片路径
+
+### ❌ 禁止以下做法
+
+```python
+# ❌ 错误：本地请求也调用脚本（多余）
+image_path = fetch_screenshot_cli.py(...)  # 不需要
+
+# ❌ 错误：远程请求自己写保存逻辑（路径会混乱）
+if "image_base64" in result["data"]:
+    with open("screenshot.png", "wb") as f:
+        f.write(base64.b64decode(result["data"]["image_base64"]))
+```
 
 ---
 

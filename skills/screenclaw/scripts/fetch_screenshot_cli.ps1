@@ -38,7 +38,7 @@ if (-not $response.success) {
     exit 1
 }
 
-$isLocal = $ApiUrl -match "localhost|127\.0\.0\.1"
+$isLocal = $ApiUrl -match "localhost|127\.0\.0\.1|::1"
 
 if ($isLocal) {
     Write-Output $response.data.image_path
@@ -50,7 +50,17 @@ else {
 
     $dataDir = "$env:APPDATA\screenclaw\data"
     $outputDir = Join-Path $dataDir $dirName
-    New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+
+    # Handle directory name encoding issues
+    try {
+        New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+    }
+    catch {
+        # Fallback: use timestamp as directory name if original name fails
+        $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+        $outputDir = Join-Path $dataDir $timestamp
+        New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+    }
 
     $outputPath = Join-Path $outputDir $filename
     $bytes = [Convert]::FromBase64String($response.data.image_base64)

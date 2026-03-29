@@ -87,43 +87,68 @@ Content-Type: application/json
 
 **问题**：命令行传递中文时可能报错 `There was an error parsing the body`
 
-**解决方案（按环境选择）**：
+**解决方案**：使用Unicode编码
 
-| 环境 | 中文支持 | 解决方案 |
-|------|---------|----------|
-| **PowerShell** | ✅ 支持 | 直接传递中文即可 |
-| **cmd / bash** | ❌ 有问题 | 使用 batch 接口或文件方式 |
+### Unicode编码方案（推荐，所有环境通用）
 
-### PowerShell 环境（推荐，支持中文）
+**原理**：将中文转换为Unicode编码（如`\u4f60\u597d`），服务端自动解码
+
+**示例**：
+```json
+// 原始中文
+"text": "你好，这是中文内容"
+
+// Unicode编码（AI生成时使用）
+"text": "\u4f60\u597d\uff0c\u8fd9\u662f\u4e2d\u6587\u5185\u5bb9"
+```
+
+**完整请求示例**：
+```json
+{
+  "ai_app_type": "claude_code",
+  "session_id": "my_session",
+  "window_id": 1001,
+  "text": "\u4f60\u597d\uff0c\u8fd9\u662f\u4e2d\u6587\u5185\u5bb9",
+  "action_method": "background"
+}
+```
+
+**转换方式**：
+- Python: `"你好".encode('unicode_escape').decode('utf-8')` → `\\u4f60\\u597d`
+- JavaScript: `JSON.stringify("你好")` → `"\u4f60\u597d"`
+- AI自动处理：大多数AI会自动将中文转换为Unicode编码
+
+### PowerShell 环境（直接传递中文也可）
 
 ```powershell
-# 直接传递中文，PowerShell 会正确处理 UTF-8
+# PowerShell支持直接传递中文
 curl -X POST \
   -H "Authorization: Bearer TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"ai_app_type":"claude_code","session_id":"session-123","window_id":1001,"text":"你好，这是中文内容"}' \
+  -d '{"text":"你好，这是中文内容"}' \
   "http://localhost:12261/api/input_text"
 ```
 
-### cmd / bash 环境（中文问题）
+### cmd / bash 环境（使用Unicode或batch）
 
-**方案1：使用 batch 接口**（推荐）
+**方案1：Unicode编码**（推荐）
 ```bash
-# batch 在服务端处理，避免客户端编码问题
+# 使用Unicode编码，无编码问题
 curl -X POST \
   -H "Authorization: Bearer TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"ai_app_type":"claude_code","session_id":"session-123","window_id":1001,"instructions":[{"action":"click","params":{"x":50,"y":50}},{"action":"input_text","params":{"text":"中文内容"}}]}' \
-  "http://localhost:12261/api/batch"
+  -d '{"text":"\u4f60\u597d\uff0c\u8fd9\u662f\u4e2d\u6587\u5185\u5bb9"}' \
+  "http://localhost:12261/api/input_text"
 ```
 
-**方案2：使用文件**
+**方案2：使用 batch 接口**
 ```bash
-# 先保存JSON到文件，再发送
-cat > request.json << EOF
-{"text":"你好，这是中文内容"}
-EOF
-curl -d @request.json ...
+# batch 在服务端处理
+curl -X POST \
+  -H "Authorization: Bearer TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"instructions":[{"action":"input_text","params":{"text":"\u4f60\u597d"}}]}' \
+  "http://localhost:12261/api/batch"
 ```
 
 ---

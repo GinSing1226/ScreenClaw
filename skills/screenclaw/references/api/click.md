@@ -40,8 +40,8 @@ Content-Type: application/json
 | `session_id` | string | 是 | - | 会话唯一标识，整个会话保持一致 |
 | `window_id` | int | 是 | - | 目标窗口句柄，从get_window_list获取 |
 | `main_window_id` | int | 否 | - | 主窗口ID（用于恢复窗口） |
-| `x` | float | 是 | - | 横坐标（0-100，百分比），从截图分析得出 |
-| `y` | float | 是 | - | 纵坐标（0-100，百分比），从截图分析得出 |
+| `x` | float | 是 | - | 横坐标（从截图的网格标记中直接读出的数字，如50表示中间位置） |
+| `y` | float | 是 | - | 纵坐标（从截图的网格标记中直接读出的数字，如30表示偏上位置） |
 | `action_method` | string | 否 | "background" | 操作方式：background/hijack |
 
 ### 操作方式
