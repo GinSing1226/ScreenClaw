@@ -59,6 +59,9 @@ class ConfigService:
         else:
             self.config_path = config_path
 
+        # 初始化缓存
+        self._blocked_processes_cache: set = set()
+
         self.config: AppConfig = self._load_or_create()
 
     def _load_or_create(self) -> AppConfig:
@@ -71,6 +74,8 @@ class ConfigService:
                 # 确保host不为空
                 if not config.server.host:
                     config.server.host = "0.0.0.0"
+                # 构建缓存
+                self._build_cache(config)
                 return config
             except Exception as e:
                 print(f"加载配置失败: {e}，使用默认配置")
@@ -85,6 +90,8 @@ class ConfigService:
         config.server.token = self._generate_token()
         config.server.local_ip = self._get_local_ip()
         self._save(config)
+        # 构建缓存
+        self._build_cache(config)
         return config
 
     def _generate_token(self) -> str:
@@ -107,13 +114,21 @@ class ConfigService:
         with open(self.config_path, 'w', encoding='utf-8') as f:
             json.dump(config.model_dump(), f, indent=2, ensure_ascii=False)
 
+    def _build_cache(self, config: AppConfig):
+        """构建缓存：将阻止进程列表转换为小写集合，实现O(1)查找"""
+        self._blocked_processes_cache = {p.lower() for p in config.security.blocked_processes}
+
     def save(self):
         """保存当前配置"""
         self._save(self.config)
+        # 保存配置后需要重建缓存
+        self._build_cache(self.config)
 
     def reload(self):
         """重新加载配置"""
         self.config = self._load_or_create()
+        # 重新加载配置后需要重建缓存
+        self._build_cache(self.config)
 
     def get(self) -> AppConfig:
         """获取配置"""
@@ -131,7 +146,7 @@ class ConfigService:
 
     def is_process_blocked(self, process_name: str) -> bool:
         """检查进程是否在禁止清单中"""
-        return process_name.lower() in [p.lower() for p in self.config.security.blocked_processes]
+        return process_name.lower() in self._blocked_processes_cache
 
     def verify_token(self, token: str) -> bool:
         """验证Token"""
