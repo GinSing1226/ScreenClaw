@@ -44,9 +44,9 @@ def get_client_ip(request: Request) -> str:
 
 
 def is_local_request(client_ip: str) -> bool:
-    """判断是否为本地请求"""
+    """判断是否为本地请求（只有本机进程能访问文件路径）"""
     local_ips = {"127.0.0.1", "::1", "localhost"}
-    return client_ip in local_ips or client_ip.startswith("127.") or client_ip.startswith("192.168.") or client_ip.startswith("10.")
+    return client_ip in local_ips
 
 
 @router.post("/screenshot")

@@ -316,10 +316,10 @@ async def _execute_single_instruction(
             from app.services.config_service import config_service
             import os
 
-            # 判断是否为本地请求
+            # 判断是否为本地请求（只有本机进程能访问文件路径）
             def is_local_request(ip: str) -> bool:
                 local_ips = {"127.0.0.1", "::1", "localhost"}
-                return ip in local_ips or ip.startswith("127.") or ip.startswith("192.168.") or ip.startswith("10.")
+                return ip in local_ips
 
             # 截图
             result = windows_capture.capture(window_id)
