@@ -49,7 +49,7 @@ async def input_text(request: InputTextRequest, req: Request = None, authorizati
             process_name="",
             instruction="input_text",
             params={"x": request.x, "y": request.y, "text": request.text[:50] + "..."},
-            result={"success": False, "message": "窗口不存在"},
+            result={"success": False, "message": "Window not found"},
             client_ip=client_ip
         )
         return create_error_response("WINDOW_NOT_FOUND")
@@ -88,7 +88,7 @@ async def input_text(request: InputTextRequest, req: Request = None, authorizati
             request.window_id, request.x, request.y, request.main_window_id
         )
         if not coords:
-            return create_error_response("INTERNAL_ERROR", "无法获取窗口矩形")
+            return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
         physical_x, physical_y, virtual_x, virtual_y = coords
 
     # 执行输入
@@ -120,7 +120,7 @@ async def input_text(request: InputTextRequest, req: Request = None, authorizati
     )
 
     if inject_result.success:
-        return OperationResponse(success=True, message="指令已发送，可截图验证结果")
+        return OperationResponse(success=True, message="Command sent, verify with screenshot")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -141,7 +141,7 @@ async def press_key(request: PressKeyRequest, req: Request = None, authorization
             process_name="",
             instruction="press_key",
             params={"key": request.key},
-            result={"success": False, "message": "窗口不存在"},
+            result={"success": False, "message": "Window not found"},
             client_ip=client_ip
         )
         return create_error_response("WINDOW_NOT_FOUND")
@@ -180,7 +180,7 @@ async def press_key(request: PressKeyRequest, req: Request = None, authorization
             request.window_id, request.x, request.y, request.main_window_id
         )
         if not coords:
-            return create_error_response("INTERNAL_ERROR", "无法获取窗口矩形")
+            return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
         physical_x, physical_y, virtual_x, virtual_y = coords
 
     # 执行按键
@@ -217,6 +217,6 @@ async def press_key(request: PressKeyRequest, req: Request = None, authorization
     )
 
     if inject_result.success:
-        return OperationResponse(success=True, message="指令已发送，可截图验证结果")
+        return OperationResponse(success=True, message="Command sent, verify with screenshot")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)

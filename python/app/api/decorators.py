@@ -56,22 +56,22 @@ def _clear_context(request_obj: Any) -> None:
 
 def with_verification(func: Callable) -> Callable:
     """
-    验证装饰器 - 验证窗口、进程并注入上下文变量
+    验证装饰器 - 验证窗口、Process并注入上下文变量
 
     功能：
     1. 验证窗口是否存在
-    2. 验证进程是否被禁止
+    2. 验证Process是否被禁止
     3. 注入 process_info, start_time, client_ip 到请求对象
 
     错误处理：
-    - 窗口不存在：记录日志并返回错误响应
-    - 进程被禁止：返回错误响应
+    - Window not found：记录日志并返回错误响应
+    - Process被禁止：返回错误响应
 
     使用方式：
         @with_verification
         async def my_endpoint(request: RequestModel, req: Request = None, ...):
             # 此时 request 对象已被注入以下属性：
-            # - request.process_info: 进程信息对象
+            # - request.process_info: Process信息对象
             # - request.start_time: 请求开始时间戳
             # - request.client_ip: 客户端IP地址
     """
@@ -114,14 +114,14 @@ def with_verification(func: Callable) -> Callable:
                 process_name="",
                 instruction=request_data.__class__.__name__,
                 params=request_data.model_dump(),
-                result={"success": False, "message": "窗口不存在"},
+                result={"success": False, "message": "Window not found"},
                 client_ip=client_ip
             )
-            return create_error_response("WINDOW_NOT_FOUND", "窗口不存在")
+            return create_error_response("WINDOW_NOT_FOUND", "Window not found")
 
-        # 检查进程是否被禁止
+        # 检查Process是否被禁止
         if config_service.is_process_blocked(process_info.process_name):
-            return create_error_response("PROCESS_BLOCKED", f"进程 {process_info.process_name} 被禁止操作")
+            return create_error_response("PROCESS_BLOCKED", f"Process {process_info.process_name} is blocked")
 
         # 使用 Pydantic 的 model_dump() 和 model_construct() 来创建包含额外字段的副本
         # 或者直接使用 object.__setattr__ 绕过 Pydantic 的验证
@@ -152,7 +152,7 @@ def log_and_format(func: Callable) -> Callable:
         @log_and_format
         async def my_endpoint(...) -> BaseResponse:
             # 返回 BaseResponse 或字典即可，装饰器会自动处理
-            return {"success": True, "message": "操作成功"}
+            return {"success": True, "message": "Operation successful"}
 
     注意：
         - 需要在 @with_verification 之后使用，以便访问注入的上下文变量

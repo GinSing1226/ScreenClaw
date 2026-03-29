@@ -69,7 +69,7 @@ async def take_screenshot(
             process_name="",
             instruction="screenshot",
             params={},
-            result={"success": False, "message": "窗口不存在"},
+            result={"success": False, "message": "Window not found"},
             client_ip=client_ip
         )
         return create_error_response("WINDOW_NOT_FOUND")
@@ -83,7 +83,7 @@ async def take_screenshot(
             process_name=process_info.process_name,
             instruction="screenshot",
             params={},
-            result={"success": False, "message": "进程在禁止清单中"},
+            result={"success": False, "message": "Process is blocked"},
             client_ip=client_ip
         )
         return create_error_response("PROCESS_BLOCKED")
@@ -202,6 +202,6 @@ async def take_screenshot(
 
     return ScreenshotResponse(
         success=True,
-        message="截图成功",
+        message="Screenshot successful",
         data=screenshot_data
     )

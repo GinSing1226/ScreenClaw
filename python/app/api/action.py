@@ -106,7 +106,7 @@ async def click(request: ClickRequest, req: Request = None, authorization: str =
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="指令已发送，可截图验证结果")
+        return BaseResponse(success=True, message="Command sent, verify with screenshot")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -160,7 +160,7 @@ async def long_press(request: LongPressRequest, authorization: str = Header(None
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="指令已发送，可截图验证结果")
+        return BaseResponse(success=True, message="Command sent, verify with screenshot")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -222,7 +222,7 @@ async def swipe(request: SwipeRequest, authorization: str = Header(None)):
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="指令已发送，可截图验证结果")
+        return BaseResponse(success=True, message="Command sent, verify with screenshot")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -274,7 +274,7 @@ async def scroll(request: ScrollRequest, authorization: str = Header(None)):
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="指令已发送，可截图验证结果")
+        return BaseResponse(success=True, message="Command sent, verify with screenshot")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -327,7 +327,7 @@ async def hover(request: HoverRequest, authorization: str = Header(None)):
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="指令已发送，可截图验证结果")
+        return BaseResponse(success=True, message="Command sent, verify with screenshot")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -378,7 +378,7 @@ async def right_click(request: RightClickRequest, authorization: str = Header(No
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="指令已发送，可截图验证结果")
+        return BaseResponse(success=True, message="Command sent, verify with screenshot")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -403,4 +403,4 @@ async def wait(request: WaitRequest, authorization: str = Header(None)):
         duration_ms=duration_ms
     )
 
-    return BaseResponse(success=True, message="等待完成")
+    return BaseResponse(success=True, message="Wait completed")

@@ -10,7 +10,7 @@ from typing import Optional, List, Dict, Any
 class BaseResponse(BaseModel):
     """响应基类"""
     success: bool = Field(default=True, description="是否成功")
-    message: str = Field(default="执行成功", description="消息")
+    message: str = Field(default="Operation completed successfully", description="消息")
     error_code: Optional[str] = Field(default=None, description="错误码")
 
 
@@ -110,7 +110,7 @@ def create_error_response(error_code: str, message: str = None) -> BaseResponse:
     """创建错误响应"""
     error_info = ERROR_CODES.get(error_code, {})
     if message is None:
-        message = error_info.get("zh", "未知错误")
+        message = error_info.get("zh", "Unknown error")
     return BaseResponse(
         success=False,
         message=message,

@@ -29,7 +29,7 @@ async def health_check():
 
     return HealthResponse(
         success=True,
-        message="服务正常",
+        message="Service OK",
         data=HealthData(
             version="1.0.0",
             uptime_seconds=uptime
@@ -101,7 +101,7 @@ async def batch_execute(request: BatchRequest, req: Request = None, authorizatio
     if failed_index is not None:
         return BatchResponse(
             success=False,
-            message=f"执行中断：第{failed_index + 1}条指令失败",
+            message=f"Execution interrupted at instruction{failed_index + 1}  failed",
             data=BatchData(
                 executed_count=executed_count,
                 failed_index=failed_index,
@@ -111,7 +111,7 @@ async def batch_execute(request: BatchRequest, req: Request = None, authorizatio
 
     return BatchResponse(
         success=True,
-        message="执行完成",
+        message="Execution completed",
         data=BatchData(
             executed_count=executed_count,
             failed_index=None,
@@ -147,11 +147,11 @@ async def _execute_single_instruction(
     # 获取进程信息（所有模式都需要，用于禁止检查）
     process_info = process_service.get_process_by_window_id(window_id)
     if not process_info:
-        return {"success": False, "message": "窗口不存在"}
+        return {"success": False, "message": "Window not found"}
 
     # 检查进程是否被禁止（所有模式都生效）
     if config_service.is_process_blocked(process_info.process_name):
-        return {"success": False, "message": "进程被禁止"}
+        return {"success": False, "message": "Process is blocked"}
 
     # hijack 模式需要用户确认
     if action_method == "hijack":
@@ -208,7 +208,7 @@ async def _execute_single_instruction(
         print(f"[BatchConfirm] Confirm result: confirmed={confirm_result.confirmed}, remember={confirm_result.remember}")
 
         if not confirm_result.confirmed:
-            return {"success": False, "message": "用户拒绝操作"}
+            return {"success": False, "message": "User denied"}
 
     def _calc(x_pct, y_pct, main_window_id=None):
         """DPI感知坐标计算（调用公共函数）"""
@@ -218,14 +218,14 @@ async def _execute_single_instruction(
         if action == "click":
             c = _calc(params["x"], params["y"], main_window_id)
             if not c:
-                return {"success": False, "message": "无法获取窗口矩形"}
+                return {"success": False, "message": "Cannot get window rectangle"}
             r = windows_input.click(window_id, c[0], c[1], c[2], c[3], action_method)
             return {"success": r.success, "message": r.error or _success_msg}
 
         elif action == "long_press":
             c = _calc(params["x"], params["y"], main_window_id)
             if not c:
-                return {"success": False, "message": "无法获取窗口矩形"}
+                return {"success": False, "message": "Cannot get window rectangle"}
             dur = params.get("duration_ms", 500)
             r = windows_input.long_press(window_id, c[0], c[1], c[2], c[3], dur, action_method)
             return {"success": r.success, "message": r.error or _success_msg}
@@ -234,7 +234,7 @@ async def _execute_single_instruction(
             cs = _calc(params["start_x"], params["start_y"])
             ce = _calc(params["end_x"], params["end_y"])
             if not cs or not ce:
-                return {"success": False, "message": "无法获取窗口矩形"}
+                return {"success": False, "message": "Cannot get window rectangle"}
             r = windows_input.swipe(window_id, cs[0], cs[1], ce[0], ce[1],
                                     cs[2], cs[3], ce[2], ce[3], action_method)
             return {"success": r.success, "message": r.error or _success_msg}
@@ -242,7 +242,7 @@ async def _execute_single_instruction(
         elif action == "scroll":
             c = _calc(params["x"], params["y"], main_window_id)
             if not c:
-                return {"success": False, "message": "无法获取窗口矩形"}
+                return {"success": False, "message": "Cannot get window rectangle"}
             r = windows_input.scroll(window_id, c[0], c[1], c[2], c[3],
                                      params["delta"], action_method)
             return {"success": r.success, "message": r.error or _success_msg}
@@ -250,14 +250,14 @@ async def _execute_single_instruction(
         elif action == "right_click":
             c = _calc(params["x"], params["y"], main_window_id)
             if not c:
-                return {"success": False, "message": "无法获取窗口矩形"}
+                return {"success": False, "message": "Cannot get window rectangle"}
             r = windows_input.right_click(window_id, c[0], c[1], c[2], c[3], action_method)
             return {"success": r.success, "message": r.error or _success_msg}
 
         elif action == "hover":
             c = _calc(params["x"], params["y"], main_window_id)
             if not c:
-                return {"success": False, "message": "无法获取窗口矩形"}
+                return {"success": False, "message": "Cannot get window rectangle"}
             dur = params.get("duration_ms", 500)
             r = windows_input.hover(window_id, c[0], c[1], c[2], c[3], dur, action_method)
             return {"success": r.success, "message": r.error or _success_msg}
@@ -306,7 +306,7 @@ async def _execute_single_instruction(
         elif action == "wait":
             dur = params.get("duration_ms", 1000)
             time.sleep(dur / 1000)
-            return {"success": True, "message": "等待完成"}
+            return {"success": True, "message": "Wait completed"}
 
         elif action == "screenshot":
             from app.platform.windows.capture import windows_capture
@@ -383,12 +383,12 @@ async def _execute_single_instruction(
 
             return {
                 "success": True,
-                "message": "截图完成",
+                "message": "Screenshot completed",
                 "data": result_data
             }
 
         else:
-            return {"success": False, "message": f"未知指令类型: {action}"}
+            return {"success": False, "message": f"Unknown instruction type: {action}"}
 
     except Exception as e:
         return {"success": False, "message": str(e)}
