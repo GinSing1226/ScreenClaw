@@ -43,6 +43,12 @@ def get_client_ip(request: Request) -> str:
     return "unknown"
 
 
+def is_local_request(client_ip: str) -> bool:
+    """判断是否为本地请求"""
+    local_ips = {"127.0.0.1", "::1", "localhost"}
+    return client_ip in local_ips or client_ip.startswith("127.") or client_ip.startswith("192.168.") or client_ip.startswith("10.")
+
+
 @router.post("/screenshot")
 async def take_screenshot(
     request: ScreenshotRequest,
@@ -185,11 +191,14 @@ async def take_screenshot(
         client_ip=client_ip
     )
 
+    # 本地请求返回路径，远程请求只返回base64（避免误导AI）
+    is_local = is_local_request(client_ip)
+    screenshot_data = ScreenshotData(image_base64=image_base64)
+    if is_local:
+        screenshot_data.image_path = os.path.abspath(image_path)
+
     return ScreenshotResponse(
         success=True,
         message="截图成功",
-        data=ScreenshotData(
-            image_path=os.path.abspath(image_path),
-            image_base64=image_base64
-        )
+        data=screenshot_data
     )

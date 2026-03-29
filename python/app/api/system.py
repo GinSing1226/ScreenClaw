@@ -58,7 +58,8 @@ async def batch_execute(request: BatchRequest, req: Request = None, authorizatio
             request.window_id,
             instruction,
             request.main_window_id,
-            is_last
+            is_last,
+            client_ip
         )
 
         results.append(InstructionResult(
@@ -125,7 +126,8 @@ async def _execute_single_instruction(
     window_id: int,
     instruction,
     main_window_id: int = None,
-    is_last: bool = False
+    is_last: bool = False,
+    client_ip: str = "unknown"
 ) -> dict:
     """执行单条指令"""
     from app.services.process_service import process_service
@@ -314,6 +316,11 @@ async def _execute_single_instruction(
             from app.services.config_service import config_service
             import os
 
+            # 判断是否为本地请求
+            def is_local_request(ip: str) -> bool:
+                local_ips = {"127.0.0.1", "::1", "localhost"}
+                return ip in local_ips or ip.startswith("127.") or ip.startswith("192.168.") or ip.startswith("10.")
+
             # 截图
             result = windows_capture.capture(window_id)
             if not result.success or result.image is None:
@@ -367,13 +374,16 @@ async def _execute_single_instruction(
             # 转换为base64
             image_base64 = image_to_base64(image)
 
+            # 本地请求返回路径，远程请求只返回base64
+            is_local = is_local_request(client_ip)
+            result_data = {"image_base64": image_base64}
+            if is_local:
+                result_data["image_path"] = os.path.abspath(image_path)
+
             return {
                 "success": True,
                 "message": "截图完成",
-                "data": {
-                    "image_path": os.path.abspath(image_path),
-                    "image_base64": image_base64
-                }
+                "data": result_data
             }
 
         else:
