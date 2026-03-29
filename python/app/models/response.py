@@ -41,8 +41,8 @@ class GetWindowListResponse(BaseResponse):
 
 class ScreenshotData(BaseModel):
     """截图数据"""
-    image_path: str = Field(..., description="图片本地路径")
-    image_base64: str = Field(..., description="图片base64编码")
+    image_path: Optional[str] = Field(None, description="图片本地路径")
+    image_base64: Optional[str] = Field(None, description="图片base64编码")
 
 
 class ScreenshotResponse(BaseResponse):
