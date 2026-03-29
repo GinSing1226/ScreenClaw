@@ -24,28 +24,9 @@ from app.services.process_service import process_service
 from app.services.log_service import log_service
 from app.platform.windows.input import windows_input
 from app.utils.coordinate import restore_window_and_calc_coords
+from app.api.decorators import verify_request_common, get_client_ip
 
 router = APIRouter()
-
-
-def get_client_ip(request: Request) -> str:
-    """获取客户端IP地址"""
-    # 优先从 X-Forwarded-For 获取（代理情况）
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-
-    # 从 X-Real-IP 获取
-    real_ip = request.headers.get("X-Real-IP")
-    if real_ip:
-        return real_ip
-
-    # 直接连接的客户端IP
-    if request.client:
-        return request.client.host
-
-    return "unknown"
-
 
 
 def _calc_coords(hwnd: int, x: float, y: float, main_window_id: int = None):
@@ -94,27 +75,15 @@ def _check_hijack_confirm(request, process_info, operation: str, detail: str) ->
 @router.post("/click")
 async def click(request: ClickRequest, req: Request = None, authorization: str = Header(None)):
     """点击"""
-    start_time = time.time()
     client_ip = get_client_ip(req) if req else "unknown"
 
-    # 获取窗口信息
-    process_info = process_service.get_process_by_window_id(request.window_id)
-    if not process_info:
-        log_service.log(
-            ai_app_type=request.ai_app_type,
-            session_id=request.session_id,
-            window_id=request.window_id,
-            process_name="",
-            instruction="click",
-            params={"x": request.x, "y": request.y},
-            result={"success": False, "message": "窗口不存在"},
-            client_ip=client_ip
-        )
-        return create_error_response("WINDOW_NOT_FOUND")
+    # 使用通用验证逻辑
+    verification = verify_request_common(request, client_ip)
+    if "error" in verification:
+        return create_error_response(verification["error"])
 
-    # 检查进程是否被禁止
-    if config_service.is_process_blocked(process_info.process_name):
-        return create_error_response("PROCESS_BLOCKED")
+    process_info = verification["process_info"]
+    start_time = verification["start_time"]
 
     # hijack 模式需要用户确认
     confirm_error = _check_hijack_confirm(
