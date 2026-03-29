@@ -28,6 +28,16 @@ import win32gui
 import win32api
 import win32con
 
+# Cached code templates for background operations
+from app.platform.windows._code_templates import (
+    _get_background_click_template,
+    _get_background_right_click_template,
+    _get_background_long_press_template,
+    _get_background_swipe_template,
+    _get_background_scroll_template,
+    _get_background_hover_template,
+)
+
 
 @dataclass
 class InjectResult:
@@ -239,117 +249,33 @@ class WindowsInputInjector:
 
     def _background_click(self, hwnd: int, x: int, y: int) -> bool:
         """Background 点击 - 使用 virtual 坐标（API层已处理最小化恢复）"""
-        code = f'''
-import win32gui, win32api, win32con
-
-hwnd = {hwnd}
-x = {x}
-y = {y}
-
-# API 层已经处理了最小化恢复，直接 PostMessage
-lParam = win32api.MAKELONG(x, y)
-print("[BackgroundClick] PostMessage to hwnd=%d, client=(%d, %d)" % (hwnd, x, y))
-win32gui.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, 0x0001, lParam)
-win32gui.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lParam)
-print("[BackgroundClick] Done")
-'''
+        code = _get_background_click_template(hwnd, x, y)
         return self._run_subprocess(code, timeout=5)
 
     def _background_right_click(self, hwnd: int, x: int, y: int) -> bool:
-        code = f'''
-import win32gui, win32api, win32con, time
-hwnd, x, y = {hwnd}, {x}, {y}
-lParam = win32api.MAKELONG(x, y)
-win32gui.PostMessage(hwnd, win32con.WM_RBUTTONDOWN, 0x0002, lParam)
-time.sleep(0.05)
-win32gui.PostMessage(hwnd, win32con.WM_RBUTTONUP, 0, lParam)
-'''
+        """Background 右键点击"""
+        code = _get_background_right_click_template(hwnd, x, y)
         return self._run_subprocess(code, timeout=5)
 
     def _background_long_press(self, hwnd: int, x: int, y: int, duration_ms: int) -> bool:
-        code = f'''
-import win32gui, win32api, win32con, time
-hwnd, x, y, duration_ms = {hwnd}, {x}, {y}, {duration_ms}
-lParam = win32api.MAKELONG(x, y)
-win32gui.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, 0x0001, lParam)
-time.sleep(duration_ms / 1000)
-win32gui.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lParam)
-'''
+        """Background 长按"""
+        code = _get_background_long_press_template(hwnd, x, y, duration_ms)
         return self._run_subprocess(code, timeout=max(10, duration_ms / 1000 + 5))
 
     def _background_swipe(self, hwnd: int, sx: int, sy: int, ex: int, ey: int) -> bool:
         """Background 滑动 - 10步插值，使用 virtual 坐标"""
-        code = f'''
-import win32gui, win32api, win32con, time
-
-hwnd = {hwnd}
-sx = {sx}
-sy = {sy}
-ex = {ex}
-ey = {ey}
-
-lParam_start = win32api.MAKELONG(sx, sy)
-win32gui.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, 0x0001, lParam_start)
-time.sleep(0.05)
-
-# 分步移动
-steps = 10
-duration = 0.3
-step_delay = duration / steps
-
-for i in range(1, steps + 1):
-    progress = i / steps
-    current_x = int(sx + (ex - sx) * progress)
-    current_y = int(sy + (ey - sy) * progress)
-    lParam = win32api.MAKELONG(current_x, current_y)
-    win32gui.PostMessage(hwnd, win32con.WM_MOUSEMOVE, 0x0001, lParam)
-    time.sleep(step_delay)
-
-lParam_end = win32api.MAKELONG(ex, ey)
-win32gui.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lParam_end)
-'''
+        code = _get_background_swipe_template(hwnd, sx, sy, ex, ey)
         return self._run_subprocess(code, timeout=10)
 
     def _background_scroll(self, hwnd: int, virtual_x: int, virtual_y: int, delta: int) -> bool:
         """PostMessage WM_MOUSEWHEEL，lParam 使用屏幕坐标"""
-        code = f'''
-import win32gui, win32api, win32con
-
-hwnd = {hwnd}
-delta = {delta}
-
-# 客户区虚拟坐标 → 屏幕坐标
-screen_x, screen_y = win32gui.ClientToScreen(hwnd, ({virtual_x}, {virtual_y}))
-lParam = win32api.MAKELONG(screen_x, screen_y)
-wParam = (delta << 16) & 0xFFFF0000
-win32gui.PostMessage(hwnd, win32con.WM_MOUSEWHEEL, wParam, lParam)
-'''
+        code = _get_background_scroll_template(hwnd, virtual_x, virtual_y, delta)
         return self._run_subprocess(code, timeout=5)
 
     def _background_hover(self, hwnd: int, x: int, y: int, duration_ms: int,
                          semi_blocking: bool = False) -> bool:
         """Background 鼠标悬浮 - 只发送 WM_MOUSEMOVE（不按下鼠标）"""
-        code = f'''
-import win32gui, win32api, win32con, time
-
-hwnd = {hwnd}
-x = {x}
-y = {y}
-duration_ms = {duration_ms}
-
-# 只发送 WM_MOUSEMOVE，不按下鼠标
-lParam = win32api.MAKELONG(x, y)
-win32gui.PostMessage(hwnd, win32con.WM_MOUSEMOVE, 0, lParam)
-
-# 多发送几次增强效果
-for _ in range(3):
-    time.sleep(0.01)
-    win32gui.PostMessage(hwnd, win32con.WM_MOUSEMOVE, 0, lParam)
-
-# 停留指定时长
-if duration_ms > 0:
-    time.sleep(duration_ms / 1000.0)
-'''
+        code = _get_background_hover_template(hwnd, x, y, duration_ms)
         timeout = max(5, duration_ms / 1000 + 5) if duration_ms > 0 else 5
         return self._run_subprocess(code, timeout=int(timeout), semi_blocking=semi_blocking)
 
