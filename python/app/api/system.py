@@ -2,7 +2,7 @@
 系统API - 健康检查、组合指令
 """
 import time
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, Request
 
 from app.models.request import BatchRequest
 from app.models.response import (
