@@ -116,7 +116,7 @@ description: 触发快捷键功能（Ctrl+C复制）、发送特殊按键（Ente
 ```json
 {
   "success": true,
-  "message": "按键成功"
+  "message": "指令已发送，可截图验证结果"
 }
 ```
 

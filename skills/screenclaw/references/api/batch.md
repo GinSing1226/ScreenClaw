@@ -108,13 +108,15 @@ description: 执行多步骤的固定流程（如登录、导航）、减少网�
   "data": {
     "executed_count": 3,
     "results": [
-      { "success": true, "message": "点击成功" },
+      { "success": true, "message": "指令已发送" },
       { "success": true, "message": "等待完成" },
-      { "success": true, "message": "输入成功" }
+      { "success": true, "message": "指令已发送，可截图验证结果" }
     ]
   }
 }
 ```
+
+**说明**：只有最后一步成功时才会提示"可截图验证结果"，中间步骤只返回"指令已发送"。
 
 ### 失败响应
 ```json
@@ -123,7 +125,7 @@ description: 执行多步骤的固定流程（如登录、导航）、减少网�
   "data": {
     "executed_count": 2,
     "results": [
-      { "success": true, "message": "点击成功" },
+      { "success": true, "message": "指令已发送" },
       { "success": false, "message": "窗口不存在", "error_code": "WINDOW_NOT_FOUND" }
     ]
   }
@@ -153,7 +155,7 @@ description: 执行多步骤的固定流程（如登录、导航）、减少网�
   "data": {
     "executed_count": 4,
     "results": [
-      { "success": true, "message": "点击成功" },
+      { "success": true, "message": "指令已发送" },
       { "success": true, "message": "等待完成" },
       {
         "success": true,
@@ -163,7 +165,7 @@ description: 执行多步骤的固定流程（如登录、导航）、减少网�
           "image_base64": "iVBORw0KGgo..."
         }
       },
-      { "success": true, "message": "点击成功" }
+      { "success": true, "message": "指令已发送，可截图验证结果" }
     ]
   }
 }

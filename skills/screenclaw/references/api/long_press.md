@@ -61,7 +61,7 @@ description: 触发长按才能激活的功能（如拖拽起点、显示菜单�
 ```json
 {
   "success": true,
-  "message": "长按成功"
+  "message": "指令已发送，可截图验证结果"
 }
 ```
 

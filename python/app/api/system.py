@@ -38,9 +38,11 @@ async def health_check():
 
 
 @router.post("/batch")
-async def batch_execute(request: BatchRequest, authorization: str = Header(None)):
+async def batch_execute(request: BatchRequest, req: Request = None, authorization: str = Header(None)):
     """组合指令"""
     from app.services.process_service import process_service
+
+    client_ip = req.client.host if req and req.client else "unknown"
 
     start_time = time.time()
     results = []
@@ -49,12 +51,14 @@ async def batch_execute(request: BatchRequest, authorization: str = Header(None)
 
     for i, instruction in enumerate(request.instructions):
         # 执行单条指令
+        is_last = (i == len(request.instructions) - 1)
         result = await _execute_single_instruction(
             request.ai_app_type,
             request.session_id,
             request.window_id,
             instruction,
-            request.main_window_id
+            request.main_window_id,
+            is_last
         )
 
         results.append(InstructionResult(
@@ -89,7 +93,8 @@ async def batch_execute(request: BatchRequest, authorization: str = Header(None)
             "executed_count": executed_count,
             "failed_index": failed_index
         },
-        duration_ms=duration_ms
+        duration_ms=duration_ms,
+        client_ip=client_ip
     )
 
     if failed_index is not None:
@@ -119,7 +124,8 @@ async def _execute_single_instruction(
     session_id: str,
     window_id: int,
     instruction,
-    main_window_id: int = None
+    main_window_id: int = None,
+    is_last: bool = False
 ) -> dict:
     """执行单条指令"""
     from app.services.process_service import process_service
@@ -132,6 +138,9 @@ async def _execute_single_instruction(
     action = instruction.action
     params = instruction.params
     action_method = params.get("action_method", "background")
+
+    # 成功消息：最后一步提示可截图验证
+    _success_msg = "指令已发送，可截图验证结果" if is_last else "指令已发送"
 
     # 获取进程信息（所有模式都需要，用于禁止检查）
     process_info = process_service.get_process_by_window_id(window_id)
@@ -209,7 +218,7 @@ async def _execute_single_instruction(
             if not c:
                 return {"success": False, "message": "无法获取窗口矩形"}
             r = windows_input.click(window_id, c[0], c[1], c[2], c[3], action_method)
-            return {"success": r.success, "message": r.error or "点击成功"}
+            return {"success": r.success, "message": r.error or _success_msg}
 
         elif action == "long_press":
             c = _calc(params["x"], params["y"], main_window_id)
@@ -217,7 +226,7 @@ async def _execute_single_instruction(
                 return {"success": False, "message": "无法获取窗口矩形"}
             dur = params.get("duration_ms", 500)
             r = windows_input.long_press(window_id, c[0], c[1], c[2], c[3], dur, action_method)
-            return {"success": r.success, "message": r.error or "长按成功"}
+            return {"success": r.success, "message": r.error or _success_msg}
 
         elif action == "swipe":
             cs = _calc(params["start_x"], params["start_y"])
@@ -226,7 +235,7 @@ async def _execute_single_instruction(
                 return {"success": False, "message": "无法获取窗口矩形"}
             r = windows_input.swipe(window_id, cs[0], cs[1], ce[0], ce[1],
                                     cs[2], cs[3], ce[2], ce[3], action_method)
-            return {"success": r.success, "message": r.error or "滑动成功"}
+            return {"success": r.success, "message": r.error or _success_msg}
 
         elif action == "scroll":
             c = _calc(params["x"], params["y"], main_window_id)
@@ -234,14 +243,14 @@ async def _execute_single_instruction(
                 return {"success": False, "message": "无法获取窗口矩形"}
             r = windows_input.scroll(window_id, c[0], c[1], c[2], c[3],
                                      params["delta"], action_method)
-            return {"success": r.success, "message": r.error or "滚动成功"}
+            return {"success": r.success, "message": r.error or _success_msg}
 
         elif action == "right_click":
             c = _calc(params["x"], params["y"], main_window_id)
             if not c:
                 return {"success": False, "message": "无法获取窗口矩形"}
             r = windows_input.right_click(window_id, c[0], c[1], c[2], c[3], action_method)
-            return {"success": r.success, "message": r.error or "右键成功"}
+            return {"success": r.success, "message": r.error or _success_msg}
 
         elif action == "hover":
             c = _calc(params["x"], params["y"], main_window_id)
@@ -249,7 +258,7 @@ async def _execute_single_instruction(
                 return {"success": False, "message": "无法获取窗口矩形"}
             dur = params.get("duration_ms", 500)
             r = windows_input.hover(window_id, c[0], c[1], c[2], c[3], dur, action_method)
-            return {"success": r.success, "message": r.error or "悬浮成功"}
+            return {"success": r.success, "message": r.error or _success_msg}
 
         elif action == "input_text":
             x_pct = params.get("x")
@@ -263,7 +272,7 @@ async def _execute_single_instruction(
 
             r = windows_input.input_text(window_id, px, py, vx, vy,
                                           params["text"], action_method)
-            return {"success": r.success, "message": r.error or "输入成功"}
+            return {"success": r.success, "message": r.error or _success_msg}
 
         elif action == "press_key":
             x_pct = params.get("x")
@@ -289,8 +298,8 @@ async def _execute_single_instruction(
             )
 
             if non_blocking:
-                return {"success": True, "message": "按键已发送（非阻塞）"}
-            return {"success": r.success, "message": r.error or "按键成功"}
+                return {"success": True, "message": _success_msg}
+            return {"success": r.success, "message": r.error or _success_msg}
 
         elif action == "wait":
             dur = params.get("duration_ms", 1000)

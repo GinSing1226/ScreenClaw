@@ -95,7 +95,7 @@ Content-Type: application/json
 ```json
 {
   "success": true,
-  "message": "悬浮成功"
+  "message": "指令已发送，可截图验证结果"
 }
 ```
 

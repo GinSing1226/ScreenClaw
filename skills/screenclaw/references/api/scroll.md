@@ -103,7 +103,7 @@ description: 鼠标滚轮滚动（浏览长内容、列表）
 ```json
 {
   "success": true,
-  "message": "滚动成功"
+  "message": "指令已发送，可截图验证结果"
 }
 ```
 

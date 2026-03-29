@@ -100,7 +100,7 @@ description: 向输入框输入文本内容、填表、搜索
 ```json
 {
   "success": true,
-  "message": "输入成功"
+  "message": "指令已发送，可截图验证结果"
 }
 ```
 

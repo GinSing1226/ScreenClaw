@@ -59,7 +59,7 @@ description: 打开上下文菜单、调用特定功能的快捷方式
 ```json
 {
   "success": true,
-  "message": "右键点击成功"
+  "message": "指令已发送，可截图验证结果"
 }
 ```
 

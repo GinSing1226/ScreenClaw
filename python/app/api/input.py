@@ -4,7 +4,7 @@
 """
 import time
 import win32gui
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, Request
 
 from app.models.request import InputTextRequest, PressKeyRequest
 from app.models.response import (
@@ -20,9 +20,23 @@ from app.utils.coordinate import restore_window_and_calc_coords
 router = APIRouter()
 
 
+def get_client_ip(request: Request) -> str:
+    """获取客户端IP地址"""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+
 @router.post("/input_text")
-async def input_text(request: InputTextRequest, authorization: str = Header(None)):
+async def input_text(request: InputTextRequest, req: Request = None, authorization: str = Header(None)):
     """输入文本"""
+    client_ip = get_client_ip(req) if req else "unknown"
     start_time = time.time()
 
     # 获取窗口信息
@@ -35,7 +49,8 @@ async def input_text(request: InputTextRequest, authorization: str = Header(None
             process_name="",
             instruction="input_text",
             params={"x": request.x, "y": request.y, "text": request.text[:50] + "..."},
-            result={"success": False, "message": "窗口不存在"}
+            result={"success": False, "message": "窗口不存在"},
+            client_ip=client_ip
         )
         return create_error_response("WINDOW_NOT_FOUND")
 
@@ -100,18 +115,20 @@ async def input_text(request: InputTextRequest, authorization: str = Header(None
             "action_method": request.action_method
         },
         result={"success": inject_result.success, "message": inject_result.error},
-        duration_ms=duration_ms
+        duration_ms=duration_ms,
+        client_ip=client_ip
     )
 
     if inject_result.success:
-        return OperationResponse(success=True, message="输入成功")
+        return OperationResponse(success=True, message="指令已发送，可截图验证结果")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
 
 @router.post("/press_key")
-async def press_key(request: PressKeyRequest, authorization: str = Header(None)):
+async def press_key(request: PressKeyRequest, req: Request = None, authorization: str = Header(None)):
     """按键"""
+    client_ip = get_client_ip(req) if req else "unknown"
     start_time = time.time()
 
     # 获取窗口信息
@@ -124,7 +141,8 @@ async def press_key(request: PressKeyRequest, authorization: str = Header(None))
             process_name="",
             instruction="press_key",
             params={"key": request.key},
-            result={"success": False, "message": "窗口不存在"}
+            result={"success": False, "message": "窗口不存在"},
+            client_ip=client_ip
         )
         return create_error_response("WINDOW_NOT_FOUND")
 
@@ -194,10 +212,11 @@ async def press_key(request: PressKeyRequest, authorization: str = Header(None))
             "action_method": request.action_method
         },
         result={"success": inject_result.success, "message": inject_result.error},
-        duration_ms=duration_ms
+        duration_ms=duration_ms,
+        client_ip=client_ip
     )
 
     if inject_result.success:
-        return OperationResponse(success=True, message="按键成功")
+        return OperationResponse(success=True, message="指令已发送，可截图验证结果")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)

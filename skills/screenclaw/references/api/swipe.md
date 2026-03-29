@@ -79,7 +79,7 @@ description: 触摸式滑动（翻页、切换标签、拖拽）
 ```json
 {
   "success": true,
-  "message": "滑动成功"
+  "message": "指令已发送，可截图验证结果"
 }
 ```
 
