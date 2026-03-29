@@ -1,11 +1,13 @@
 """
-日志服务
+日志服务 - 优化版本：支持异步批量写入
 """
 import os
 import sys
 import json
 import time
-from datetime import datetime
+import queue
+import threading
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
@@ -27,7 +29,11 @@ def get_project_root() -> Path:
 
 
 class LogService:
-    """日志服务"""
+    """日志服务 - 支持异步批量写入"""
+
+    # 批量写入配置
+    BATCH_SIZE = 50          # 批量大小
+    FLUSH_INTERVAL = 1.0     # 刷新间隔（秒）
 
     def __init__(self, log_dir: str = None):
         if log_dir is None:
@@ -36,6 +42,16 @@ class LogService:
         else:
             self.log_dir = log_dir
         self._ensure_dir()
+
+        # 异步批量写入组件
+        self._queue: queue.Queue = queue.Queue()
+        self._batch: List[Dict[str, Any]] = []
+        self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._writer_thread = None
+
+        # 启动后台写入线程
+        self._start_writer_thread()
 
     def _ensure_dir(self):
         """确保日志目录存在"""
@@ -48,6 +64,75 @@ class LogService:
         filename = f"{ai_app_type}-{session_id}-{date_str}.jsonl"
         return os.path.join(self.log_dir, filename)
 
+    def _start_writer_thread(self):
+        """启动后台写入线程"""
+        self._writer_thread = threading.Thread(
+            target=self._batch_writer_loop,
+            daemon=True,
+            name="LogWriter"
+        )
+        self._writer_thread.start()
+
+    def _batch_writer_loop(self):
+        """后台批量写入循环"""
+        last_flush = time.time()
+
+        while not self._stop_event.is_set():
+            try:
+                # 等待新日志或超时
+                log_entry = self._queue.get(timeout=self.FLUSH_INTERVAL)
+                with self._lock:
+                    self._batch.append(log_entry)
+
+                # 检查是否需要刷新
+                now = time.time()
+                should_flush = (
+                    len(self._batch) >= self.BATCH_SIZE or
+                    (now - last_flush) >= self.FLUSH_INTERVAL
+                )
+
+                if should_flush:
+                    self._flush_batch()
+                    last_flush = now
+
+            except queue.Empty:
+                # 超时，刷新批量
+                self._flush_batch()
+                last_flush = time.time()
+
+        # 线程结束时刷新剩余日志
+        self._flush_batch()
+
+    def _flush_batch(self):
+        """刷新批量日志到文件"""
+        if not self._batch:
+            return
+
+        with self._lock:
+            batch_to_write = self._batch.copy()
+            self._batch.clear()
+
+        if not batch_to_write:
+            return
+
+        # 按文件分组
+        file_groups: Dict[str, List[Dict[str, Any]]] = {}
+        for entry in batch_to_write:
+            log_file = entry.pop("_log_file")  # 临时字段
+            if log_file not in file_groups:
+                file_groups[log_file] = []
+            file_groups[log_file].append(entry)
+
+        # 批量写入每个文件
+        for log_file, entries in file_groups.items():
+            try:
+                with open(log_file, 'a', encoding='utf-8') as f:
+                    for entry in entries:
+                        f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+                print(f"[LOG] Batch wrote {len(entries)} entries to {log_file}")
+            except Exception as e:
+                print(f"[LOG] 批量写入失败: {e}")
+
     def log(
         self,
         ai_app_type: str,
@@ -57,10 +142,11 @@ class LogService:
         instruction: str,
         params: Dict[str, Any],
         result: Dict[str, Any],
-        duration_ms: int = 0
+        duration_ms: int = 0,
+        client_ip: str = None
     ):
         """
-        记录日志
+        记录日志（异步非阻塞）
 
         Args:
             ai_app_type: AI应用类型
@@ -71,9 +157,14 @@ class LogService:
             params: 请求参数
             result: 执行结果
             duration_ms: 执行耗时（毫秒）
+            client_ip: 客户端IP地址
         """
+        log_file = self._get_log_file_path(ai_app_type, session_id)
+
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "_log_file": log_file,  # 临时字段，用于文件分组
+            "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+            "client_ip": client_ip or "unknown",
             "window_id": window_id,
             "process_name": process_name,
             "instruction": instruction,
@@ -82,18 +173,8 @@ class LogService:
             "duration_ms": duration_ms
         }
 
-        log_file = self._get_log_file_path(ai_app_type, session_id)
-
-        # 调试信息
-        print(f"[LOG] Writing log to: {log_file}")
-        print(f"[LOG] ai_app_type='{ai_app_type}', session_id='{session_id}'")
-
-        try:
-            with open(log_file, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
-            print(f"[LOG] Log written successfully")
-        except Exception as e:
-            print(f"[LOG] 写入日志失败: {e}")
+        # 放入队列，立即返回（非阻塞）
+        self._queue.put(log_entry)
 
     def read_logs(
         self,
@@ -103,10 +184,11 @@ class LogService:
         keyword: Optional[str] = None,
         limit: int = 100
     ) -> List[Dict[str, Any]]:
-        """读取日志"""
-        logs = []
+        """读取日志（优化：直接搜索原始JSON字符串）"""
+        # 先刷新待写入的日志，确保数据最新
+        self._flush_batch()
 
-        # 获取匹配的日志文件
+        logs = []
         log_files = self._get_log_files(ai_app_type, session_id, date)
 
         for log_file in log_files:
@@ -120,16 +202,14 @@ class LogService:
                         if not line:
                             continue
 
+                        # 优化：先在原始字符串中搜索关键词
+                        if keyword:
+                            keyword_lower = keyword.lower()
+                            if keyword_lower not in line.lower():
+                                continue
+
                         try:
                             entry = json.loads(line)
-
-                            # 关键词过滤
-                            if keyword:
-                                keyword_lower = keyword.lower()
-                                entry_str = json.dumps(entry, ensure_ascii=False).lower()
-                                if keyword_lower not in entry_str:
-                                    continue
-
                             logs.append(entry)
 
                             if len(logs) >= limit:
@@ -195,6 +275,9 @@ class LogService:
 
     def cleanup_old_logs(self, retention_days: int):
         """清理过期日志"""
+        # 先刷新待写入的日志
+        self._flush_batch()
+
         if not os.path.exists(self.log_dir):
             return
 
@@ -209,6 +292,19 @@ class LogService:
             if (now - file_time) > retention_days * 24 * 60 * 60:
                 os.remove(filepath)
                 print(f"已删除过期日志: {filename}")
+
+    def shutdown(self):
+        """关闭日志服务，刷新所有待写入日志"""
+        print("[LOG] Shutting down log service...")
+        self._stop_event.set()
+
+        # 等待写入线程结束（最多5秒）
+        if self._writer_thread and self._writer_thread.is_alive():
+            self._writer_thread.join(timeout=5.0)
+
+        # 最后一次刷新
+        self._flush_batch()
+        print("[LOG] Log service shutdown complete")
 
 
 # 全局日志服务实例
