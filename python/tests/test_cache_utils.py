@@ -1,7 +1,7 @@
 # tests/test_cache_utils.py
 import time
 import pytest
-from app.utils.cache import TTLCache, cached_property
+from app.utils.cache import TTLCache, cached_class_property
 
 
 def test_ttl_cache_get_set():
@@ -41,12 +41,12 @@ def test_ttl_cache_invalidate():
     assert cache.get("key1") is None
 
 
-def test_cached_property_decorator():
+def test_cached_class_property_decorator():
     class TestClass:
         def __init__(self):
             self.call_count = 0
 
-        @cached_property(ttl_seconds=1.0)
+        @cached_class_property(ttl_seconds=1.0)
         def expensive_property(self):
             self.call_count += 1
             return "computed"
