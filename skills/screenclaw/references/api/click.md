@@ -16,7 +16,7 @@ description: 触发某个功能（如确认、取消）、进入某个页面（�
 - 需要激活某个控件
 
 ## 什么时候不用
-- 需要输入文本（使用input_text）
+- 需要输入文本（直接使用input_text）
 - 需要长按触发（使用long_press）
 - 需要滑动/滚动（使用swipe/scroll）
 
@@ -97,3 +97,4 @@ Content-Type: application/json
 2. **background无效时**：改用hijack模式
 3. **点击后验证**：截图确认点击是否生效
 4. **子窗口问题**：点击无效时，尝试使用子窗口的window_id
+5. **输入文本**：输入文本请查阅`input_text.md`api文档，Input_text自带点击后输入。不建议分步点击+输入。

@@ -21,12 +21,7 @@ description: |
 > **执行前必做**：
 > 1. 调用任何API前，必须先阅读对应API的reference文档
 > 2. 调用任何API前，必须先完成上方的"调用前清单"
-> 3. 涉及公式/复杂查询时，必须先阅读对应的guide文档
-
-> **命名约定**：
-> - 只使用 `http://xxx/api/xxx` 形式的API调用
-> - 优先使用脚本（`scripts/fetch_screenshot_cli.py`）而非手动构造命令
-> - session_id格式：`app_name_date_timestamp`（使用下划线）
+> 3. screenshot API必须使用脚本调用，禁止AI自己生成curl或PowerShell命令
 
 ## 快速开始
 
@@ -43,24 +38,24 @@ description: |
 在使用此技能前，**必须按顺序完成以下步骤**：
 
 ### 步骤1：阅读关键文档
-
 - [ ] 阅读 `references/api/call_templates.md`（API调用模板和填写规则）
 - [ ] 阅读 `references/config.md`（获取API地址、Token、ai_app_type）
 - [ ] 阅读 `scripts/README.md`（了解脚本使用方式和降级路径）
 
 **为什么要先阅读**：避免因不熟悉模板格式导致的命令错误（如JSON引号转义问题）
 
-### 步骤2：创建三角色子Agent并按铁律和协议执行
+### 步骤2：创建待办清单并按角色切换执行
 
-- [ ] **生成 session_id**（仅一次）：格式 `app_name_YYYYMMDD_HHMMSS`，**整个会话期间所有API调用都使用这个同一个session_id**
-- [ ] **创建Planner子Agent**：负责构造场景、分解任务
-- [ ] **创建Executor子Agent**：负责执行API调用、分析截图、定位坐标
-- [ ] **主Agent扮演Evaluator**：负责验证操作结果、协调Planner和Executor
+- [ ] **生成 session_id**（仅一次）：格式 `app_name_YYYYMMDD_HHMMSS`，使用下划线分隔
+- [ ] **进入Planner角色**：分析需求、创建待办清单
+- [ ] **进入Executor角色**：执行当前待办、返回结果
+- [ ] **进入Evaluator角色**：验证执行结果
+- [ ] **循环执行**：直到所有待办完成或需要重新规划
 
-> ⚠️ **session_id 警告**：绝对禁止为每个API调用或每个子Agent生成新的session_id。Planner生成一次后，传递给所有子Agent使用。
+> ⚠️ **session_id 警告**：绝对禁止为每个API调用或每次角色切换生成新的session_id。整个会话期间使用同一个session_id。
 
 **重要提示**：
-- 中文输入使用Unicode编码：`你好` → `\u4f60\u597d`
+- 涉及中文务必使用Unicode编码，例如窗口关键词、输入文本：`你好` → `\u4f60\u597d`
 - JSON内部引号不需要转义：`{"key":"value"}` 是正确的
 
 ### 步骤3：遇到问题时，重新查阅文档（禁止盲目尝试）
@@ -72,228 +67,143 @@ description: |
 - [ ] **不确定时**：使用搜索工具在 `references/` 目录中搜索关键词
 
 > ⚠️ **禁止盲目尝试**：遇到问题时，**必须先查阅文档**，而不是自己猜测参数或修改命令格式。文档中已包含所有常见问题的解决方案。
+> ⚠️ **截图用script里的脚本**：必须使用 `scripts/fetch_screenshot_cli.py` 或 `scripts/fetch_screenshot_cli.ps1` 来调用截图API，禁止自己生成curl或PowerShell命令。
 
 ---
 
-## 四条铁律（必须遵守）
+## 核心规则（必须遵守）
 
-### 铁律1：三角色协作流程
+### 规则1：角色切换 + 待办驱动流程
 
-**执行者每一步都必须截图并汇报，评估者每一步都必须验证**
+**通过待办清单驱动角色切换，执行者和评估者交替工作**
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  用户：需求输入                                             │
+│  用户：帮我在微信发送消息给产品组                           │
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  Planner：构造场景                                          │
-│  输出：5W2H场景描述 + 任务步骤                              │
+│  【Planner角色】创建待办清单                                │
+│                                                              │
+│  使用TodoWrite工具创建：                                     │
+│  - [in_progress] 执行：点击群聊"产品组"                       │
+│  - [pending] 评估：验证是否成功选中                          │
+│  - [pending] 执行：点击输入框                                │
+│  - [pending] 评估：验证是否激活                              │
+│  - [pending] 执行：输入消息"测试"                            │
+│  - [pending] 评估：验证是否输入成功                          │
+│  - [pending] 执行：点击发送按钮                              │
+│  - [pending] 评估：验证是否发送成功                          │
+│                                                              │
+│  输出：待办清单 + session_id                                 │
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  Executor：执行一步操作                                     │
-│  输出：执行动作 + 执行理由 + 周边元素(≥3个) + 图片路径       │
+│  【Executor角色】执行第一个"执行"待办                        │
+│  - 读取待办：执行：点击群聊"产品组"                          │
+│  - 调用screenshot获取界面                                    │
+│  - 五阶段分析定位坐标                                        │
+│  - 调用API执行操作                                          │
+│  - 更新待办状态：标记为completed                             │
+│  - 输出：执行动作+理由+周边元素+图片路径                      │
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  Evaluator：验证这一步                                      │
-│  - 读取图片，基于周边元素验证执行者是否说谎                 │
-│  - 通过：继续下一步                                         │
-│  - 不通过：反馈给Executor重试                               │
+│  【Evaluator角色】评估对应的"评估"待办                      │
+│  - 读取Executor的输出和图片                                 │
+│  - 寻找反例（至少3个）验证                                   │
+│  - 验证结果：                                               │
+│    → 通过：标记评估待办为completed，继续下一个               │
+│    → 不通过：标记执行待办为in_progress，要求重试             │
 └─────────────────────────────────────────────────────────────┘
                           ↓
            ┌─────────────────┴─────────────────┐
-           ↓                                   ↓
-    ┌─────────────┐                     ┌─────────────┐
-    │  验证通过    │                     │  重试5次后  │
-    │  继续下一步  │                     │  仍不通过   │
-    └─────────────┘                     └─────────────┘
+           ↓ 通过                              ↓ 不通过
+    继续下一个待办                       重试计数+1
            ↓                                   ↓
     ┌─────────────────────────────────────────────────────────┐
-    │                 任务完成                               │
+    │         所有待办完成 → 任务完成                         │
     └─────────────────────────────────────────────────────────┘
            ↓
     ┌─────────────────────────────────────────────────────────┐
-    │         触发Planner重新分析 → 提出需求澄清问题           │
-    │         Evaluator向用户沟通 → 获取更多信息 → 重新开始    │
+    │  重试5次后仍不通过？                                     │
+    │    是 → 切换到【Planner角色】重新规划                    │
+    │         （例如：找不到群聊 → 改为搜索群聊）              │
+    │    否 → 继续重试                                         │
     └─────────────────────────────────────────────────────────┘
 ```
 
 **关键点**：
-- Executor每步都要截图，每步都要汇报完整信息
-- Evaluator每步都要验证，不通过必须要求重试
-- **重试5次后仍失败**：触发Planner重新分析，由Evaluator向用户沟通澄清问题
-- 任何角色不得跳过验证流程
+- Planner使用TodoWrite创建待办清单
+- 角色按顺序切换：Planner → Executor → Evaluator → Executor → Evaluator...
+- 只有Evaluator认为通过才能进入下一个待办
+- **重试5次后仍不通过**：切换到Planner重新规划步骤
+- Evaluator认为需要变更计划时（如找不到目标），也可触发Planner重新规划
 
-### 铁律2：脚本调用规范
+### 规则2：脚本调用规范
 
-**强制规则：禁止生成自己的命令**
+**脚本分工（重要）**：
+- **截图API** → 使用 `scripts/fetch_screenshot_cli.py`（专用脚本，处理base64响应）
+- **其他所有API** → 使用 `scripts/api_call.py`（通用脚本）
 
-你绝对不能生成自己的PowerShell命令或curl命令。必须调用技能提供的现成脚本。
-
-**错误示例（不要这样做）**：
-```powershell
-# 错误：AI自己生成PowerShell命令
-powershell -Command "$response = Invoke-RestMethod ..."
-curl -X POST -H "Authorization: Bearer ..." ...
+**通用API调用（非截图）**：
+```bash
+python scripts/api_call.py <api_url> <token> <endpoint> <ai_app_type> [参数...]
 ```
 
-**正确做法（必须这样做）**：
-```
-调用现成脚本，传递参数即可：
+**示例：**
+```bash
+# 获取窗口列表（直接传中文，脚本自动转Unicode）
+python scripts/api_call.py http://192.168.10.190:12261 TOKEN get_window_list claude_code keyword=飞书
 
-Python脚本（优先）：
-python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> [session_id]
-
-PowerShell脚本（备选）：
-powershell -ExecutionPolicy Bypass -File scripts/fetch_screenshot_cli.ps1 <api_url> <token> <window_id> [session_id]
+# 点击
+python scripts/api_call.py http://192.168.10.190:12261 TOKEN click claude_code window_id=123456 x=50 y=35
 ```
 
-**为什么必须使用脚本**：
-- 脚本已经处理了所有复杂逻辑（API调用、JSON生成、错误处理）
-- AI生成的命令容易出错（PowerShell语法陷阱、引号转义问题）
-- 脚本经过测试，稳定可靠
-
-**命令格式**：
-```
-# 参数说明（按顺序）：
-# 1. api_url: ScreenClaw服务地址，如 http://localhost:12261
-# 2. token: 认证令牌
-# 3. window_id: 目标窗口ID（从get_window_list获取）
-# 4. session_id: 会话ID（可选，默认"default"）
-
-Python脚本（优先）：
-python scripts/fetch_screenshot_cli.py http://localhost:12261 YOUR_TOKEN 123456 my_session
-
-PowerShell脚本（备选）：
-powershell -ExecutionPolicy Bypass -File scripts/fetch_screenshot_cli.ps1 http://localhost:12261 YOUR_TOKEN 123456 my_session
+**截图API调用（专用）**：
+```bash
+python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> [session_id] [ai_app_type]
 ```
 
-**重要**：
-- 将参数替换为实际值后直接执行
-- 不要修改脚本内容
-- 不要添加额外的引号或转义
+**中文处理**：直接传递中文即可，脚本会自动转换为Unicode编码
 
 **降级路径**：
-```
-Python脚本 → PowerShell脚本 → 报告用户无法执行
-```
+1. api_call.py / fetch_screenshot_cli.py（Python版）
+2. api_call.ps1 / fetch_screenshot_cli.ps1（PowerShell版）
+3. api_call.sh（Bash版）
+4. 手动curl（见 `references/api/call_templates.md`）
 
-每次切换时必须告知用户：
-```
-[方法1] 执行失败：[失败原因]
-切换到 [方法2]
-```
+详细用法 → `scripts/README.md`
 
-### 铁律3：API调用指令生成规则
+### 规则3：手动curl模板（降级方案）
 
-当你需要直接调用API时（不使用脚本），必须遵守以下规则：
+只有在脚本无法使用时，才参考 `references/api/call_templates.md` 手动组装curl命令
 
-**绝对禁止事项（违反者直接判定为失败）**：
-- ❌ 自己构造复杂的PowerShell命令
-- ❌ 使用PowerShell `-Command`模式（会导致转义问题）
-- ❌ 在JSON中过度转义引号（`{\"key\"}` 是错误的，`{"key"}` 才是正确的）
-- ❌ 使用heredoc语法（`<<'EOF'` 会导致各种问题）
-- ❌ 自己拼接JSON字符串
+**核心原则**：
+- JSON内部引号不转义：`{"key":"value"}` 而不是 `{\"key\":\"value\"}`
+- 中文必须使用Unicode编码：`你好` → `\u4f60\u597d`
+- 不要使用PowerShell -Command模式
 
-**必须做法**：使用以下模板，填写参数
+### 规则4：重要参数
 
----
+已在步骤1中阅读 `references/config.md`，获取：
+- API基础地址
+- 认证Token
+- ai_app_type（当前AI应用类型）
+- **session_id：整个会话使用同一个，不要每次生成新的**
 
-#### 常见错误示例（绝对不要这样做）
+### 规则5：问题排查
 
-**错误1：JSON引号过度转义**
-```bash
-# 错误 ❌
-curl.exe -X POST -H "Authorization: Bearer TOKEN" -H "Content-Type: application/json" -d "{\"ai_app_type\": \"kimi_code\", \"session_id\": \"test\"}" "URL"
-# 错误原因：JSON内部的双引号不需要转义，这会导致 curl: (3) unmatched close brace/bracket
-```
-
-**错误2：PowerShell -Command模式**
-```powershell
-# 错误 ❌
-powershell -Command "Invoke-RestMethod ... -Body '{\"ai_app_type\":\"kimi_code\"...}'"
-# 错误原因：-Command模式会重新解析引号，导致 ParserError
-```
-
-**错误3：Heredoc语法**
-```bash
-# 错误 ❌
-curl -s -X POST ... -d @- <<'EOF'
-{"ai_app_type": "kimi_code"...}
-EOF
-# 错误原因：heredoc语法在某些环境下不稳定
-```
-
-**正确示例（必须这样做）**
-```bash
-# 正确 ✅ - JSON内部用双引号，不需要转义
-curl.exe -X POST -H "Authorization: Bearer TOKEN" -H "Content-Type: application/json" -d '{"ai_app_type":"kimi_code","session_id":"test"}' "URL"
-```
-
-**关键规则总结**：
-1. JSON内部的键值对用双引号包围，不需要转义：`{"key":"value"}` 而不是 `{\"key\":\"value\"}`
-2. 整个JSON字符串用单引号包围（在curl命令中）
-3. 不要用PowerShell的-Command模式
-4. 不要用heredoc语法
+遇到问题时查阅对应文档：
+- **API调用失败** → `references/api/*.md` 对应的API文档
+- **参数错误** → `references/config.md`
+- **脚本执行失败** → `scripts/README.md`
+- **坐标/操作问题** → 本SKILL.md的"常见问题排查"章节
+- **不确定时** → 使用搜索工具在 `references/` 目录搜索关键词
 
 ---
 
-#### 通用参数（每次调用前获取）
-
-```
-__API_URL__    : http://192.168.10.190:12261
-__TOKEN__      : YOUR_TOKEN_HERE
-__WINDOW_ID__  : WINDOW_ID_HERE
-__SESSION_ID__ : my_session
-```
-
----
-
-#### 标准API调用模板
-
-**优先级1：curl.exe（最可靠）**
-```bash
-curl.exe -X POST -H "Authorization: Bearer __TOKEN__" -H "Content-Type: application/json" -d '{"ai_app_type":"claude_code","session_id":"__SESSION_ID__","window_id":__WINDOW_ID__,"text":"\u4f60\u597d"}' "__API_URL__/api/input_text"
-```
-
-**优先级2：PowerShell Invoke-RestMethod**
-```powershell
-Invoke-RestMethod -Uri "__API_URL__/api/input_text" -Method POST -Headers @{"Authorization"="Bearer __TOKEN__"} -Body '{"ai_app_type":"claude_code","session_id":"__SESSION_ID__","window_id":__WINDOW_ID__,"text":"\u4f60\u597d"}'
-```
-
-**优先级3：批处理接口（多条指令时）**
-```bash
-curl.exe -X POST -H "Authorization: Bearer __TOKEN__" -H "Content-Type: application/json" -d '{"instructions":[{"action":"input_text","params":{"text":"\u4f60\u597d"}}]}' "__API_URL__/api/batch"
-```
-
-**降级规则**：优先级1失败 → 尝试优先级2 → 使用批处理 → 报告用户
-
----
-
-#### 填写规则
-
-1. **参数替换**：将 `__XXX__` 替换为实际值
-2. **中文处理**：中文使用Unicode编码（如 `\u4f60\u597d`）
-3. **引号处理（重要）**：
-   - JSON内部的键值对用双引号：`{"key":"value"}`
-   - JSON内部的双引号**不需要转义**：不要写成 `{\"key\":\"value\"}`
-   - 整个JSON字符串用单引号包围（在curl的-d参数中）
-4. **不要修改模板结构**：只替换参数，不要改变命令格式
-5. **整行复制**：复制整行命令，不要分段复制
-
----
-
-### 铁律5：重要参数
-
-查阅 `references/config.md` 获取：
-- **API基础地址**：如 `http://localhost:12261`
-- **认证Token**：Bearer {token}
-- **ai_app_type**：根据当前AI应用填写（如 `claude_code`）
-- **session_id**：整个会话用同一个，不要每次生成新的
-
-### 铁律6：常见问题（Executor必须熟读）
+### 规则6：常见问题（Executor必须熟读）
 
 **常见问题排查** → 详见下方"常见问题排查"章节
 
@@ -360,25 +270,23 @@ curl.exe -X POST -H "Authorization: Bearer __TOKEN__" -H "Content-Type: applicat
 
 ## 三角色架构
 
-### 角色分配
+### 角色切换机制
 
-**主agent（你）**：扮演 **Evaluator（评估者）**
-- 负责质疑executor
-- 负责验证操作结果
-- 负责向用户报告进展和沟通澄清问题
-- 协调 Planner 和 Executor 子agent
+**单AI（你）通过待办清单切换角色**
 
-**子agent1**：**Planner（规划者）**
-- 负责分析场景、构造5W2H
-- 负责分解任务步骤
-- 重试失败时重新分析，提出需求澄清问题
+你不是一个主Agent，而是根据待办清单的需要，在三个角色之间切换：
 
-**子agent2**：**Executor（执行者）**
-- 负责执行API调用
-- 负责分析截图定位坐标
-- 负责返回完整输出（动作+理由+周边元素+图片）
-- 脚本失败时按降级路径切换
-- 操作失败时根据反馈调整重试
+1. **Planner角色**：规划阶段，创建待办清单
+2. **Executor角色**：执行阶段，完成"执行"类待办
+3. **Evaluator角色**：评估阶段，完成"评估"类待办
+
+**切换时机**：
+- 任务开始时 → 进入Planner角色
+- Planner创建待办后 → 切换到Executor角色
+- Executor完成后 → 切换到Evaluator角色
+- Evaluator通过 → 继续下一个Executor待办
+- Evaluator不通过 → 返回Executor重试
+- 重试5次仍失败 → 切换到Planner重新规划
 
 ### 成功定义（大前提）
 
@@ -397,7 +305,7 @@ curl.exe -X POST -H "Authorization: Bearer __TOKEN__" -H "Content-Type: applicat
 
 ### 角色1：Planner（规划者）
 
-**本质**：场景构造器 + 需求翻译器
+**本质**：场景构造器 + 需求翻译器 + 待办清单创建者
 
 **方法论**：
 - 场景锚定：5W2H参数化建模
@@ -406,22 +314,35 @@ curl.exe -X POST -H "Authorization: Bearer __TOKEN__" -H "Content-Type: applicat
 **T-IPO-E**：
 | 阶段 | 内容 |
 |------|------|
-| **Trigger** | 收到用户需求 |
-| **Input** | 用户自然语言需求 |
-| **Process** | 需求澄清 → 场景构造 → 目标分解 → 验证标准设定 |
-| **Output** | 结构化场景描述（5W2H） |
+| **Trigger** | 收到用户需求 或 Evaluator的重规划请求 |
+| **Input** | 用户需求 / Evaluator的反馈 |
+| **Process** | 需求澄清 → 场景构造 → 目标分解 → 创建待办清单 |
+| **Output** | 待办清单 + session_id |
 | **Exception** | 需求不清晰时向用户提问 |
 
 **职责**：
 - 理解用户需求，澄清歧义
 - 构造结构化场景描述（5W2H）
 - 分解任务步骤（MECE原则）
-- 设定验证标准
-- **生成 session_id**（仅一次，格式：`app_name_YYYYMMDD_HHMMSS`，使用下划线）
-- **重试失败时**：重新分析场景，提出需求澄清问题
+- **使用TodoWrite工具创建待办清单**，格式如下：
+  ```
+  - [in_progress] 执行：具体操作描述
+  - [pending] 评估：验证标准描述
+  ```
+- **生成 session_id**（首次规划时生成，格式：`app_name_YYYYMMDD_HHMMSS`）
+- **重试失败时**：重新分析场景，调整计划步骤
+  - 例如：找不到群聊 → 改为搜索群聊
 - **不负责**：操作模式选择、参数调整、API调用
 
-**输出**：结构化场景描述（5W2H）+ 任务步骤 + **session_id**（供Executor和Evaluator复用）
+**输出**：待办清单（通过TodoWrite）+ session_id
+
+**待办格式示例**：
+```
+- [in_progress] 执行：点击群聊"产品组"
+- [pending] 评估：验证是否成功选中
+- [pending] 执行：点击输入框
+- [pending] 评估：验证是否激活
+```
 
 ---
 
@@ -437,25 +358,27 @@ curl.exe -X POST -H "Authorization: Bearer __TOKEN__" -H "Content-Type: applicat
 **T-IPO-E**：
 | 阶段 | 内容 |
 |------|------|
-| **Trigger** | 收到Planner的场景描述 或 Evaluator的反馈 |
-| **Input** | Planner的场景描述、Evaluator的反馈、当前状态 |
+| **Trigger** | 待办清单中当前待办状态变为in_progress |
+| **Input** | 待办描述、session_id、当前状态 |
 | **Process** | 调用screenshot获取图片 → 五阶段分析 → 调用操作API → 返回结果 |
 | **Output** | 执行动作 + 执行理由 + 周边元素（≥3个） + 图片路径 |
 | **Exception** | 失败时返回错误信息 + 建议重试方案 |
 
 **职责**：
-- 接收Planner的场景描述和Evaluator的反馈
+- 读取待办清单，找到当前in_progress的"执行"待办
 - 自行决定操作模式（background/hijack）
 - 自行调整参数（网格密度、透明度等）
 - 分析截图，精确定位坐标
-- 调用API执行操作（**使用Planner提供的session_id，绝对不要生成新的**）
+- 调用API执行操作（**使用session_id，绝对不要生成新的**）
+- **完成执行后更新待办状态**：将当前待办标记为completed
 - **每一步都必须返回完整输出格式**（见下方）
 - **失败时**：根据Evaluator的反馈调整参数重试
-- **脚本失败时**：按铁律2降级路径切换
+- **脚本失败时**：按规则2降级路径切换
 
 **输入**：
-- 来自Planner：场景描述（5W2H）
+- 来自待办清单：当前待办描述
 - 来自Evaluator：验证反馈、调整建议
+- 共享：session_id
 
 **输出协议（每一步必须遵守）**：
 
@@ -483,7 +406,7 @@ curl.exe -X POST -H "Authorization: Bearer __TOKEN__" -H "Content-Type: applicat
   3. 窗口标题栏：(50, 10) - 顶部居中
 ```
 
-**重要**：周边元素用于Evaluator验证执行者是否说谎，必须准确描述。
+**重要**：周边元素用于Evaluator验证执行结果是否正确，必须准确描述。
 
 **五阶段分析流程**：目标描述 → 先验自毁 → 全域扫描 → 排除筛选 → 证据确认
 
@@ -496,41 +419,47 @@ curl.exe -X POST -H "Authorization: Bearer __TOKEN__" -H "Content-Type: applicat
 **本质**：证伪者 + 反馈循环
 
 **方法论**：
-- 证伪思维：默认认为Executor错了
+- 证伪思维：默认认为Executor的结果有误
 - 强制反驳：必须找至少3个反例
 - T-IPO-E：异常时进行根因分析
 
 **T-IPO-E**：
 | 阶段 | 内容 |
 |------|------|
-| **Trigger** | 收到Executor的操作结果 |
+| **Trigger** | Executor完成执行待办 |
 | **Input** | 截图路径、Executor的完整输出（动作+理由+周边元素） |
 | **Process** | 读取截图 → 寻找反例 → 逐个测试 → 根因分析 → 生成反馈 |
-| **Output** | 验证结果 + 反馈 |
+| **Output** | 验证结果 + 反馈 + 待办状态更新 |
 | **Exception** | 验证失败时给出根因 + 调整建议 |
 
 **职责**：
-- 默认认为Executor的结论是错的
+- 默认认为Executor的结论可能有误
 - 读取执行结果的截图
 - 强制寻找反例（至少3个）：
-  - 反例必须与Executor的理由相关联，例如直接读取反馈回来的点位，去截图上验证这个点位周边的元素是否符合Executor的描述
-  - 反例必须在截图中清晰可见。不清晰也是一种反例
+  - 反例必须与Executor的理由相关联
+  - 反例必须在截图中清晰可见
+  - 不清晰也是一种反例
 - 只有所有反例都被推翻，才承认成功
-- 失败时给出根因分析和调整建议，反馈给Executor重试
-- **重试5次后仍失败**：触发Planner重新分析，提出需求澄清问题
-- **负责向用户沟通**：将Planner的澄清问题转达给用户，获取更多信息
-- **不负责**：指定具体坐标、选择操作模式、调用API
+- **验证通过**：标记当前评估待办为completed，继续下一个待办
+- **验证不通过**：
+  - 标记对应的执行待办为in_progress
+  - 给出根因分析和调整建议，反馈给Executor重试
+  - 重试计数+1
+- **重试5次后仍失败**：切换到Planner角色重新规划步骤
+  - 例如：找不到目标 → 改用搜索策略
+- **发现根本性问题时**：可立即触发Planner重新规划
+- **负责向用户沟通**：需要澄清问题时向用户提问
 
 **输入**：
 - 来自Executor：执行动作、执行理由、周边元素（≥3个）、图片路径
 
-**输出**：验证结果 + 反馈（包含反例测试和根因分析）
+**输出**：验证结果 + 反馈（包含反例测试和根因分析）+ 待办状态更新
 
-**证伪流程**：假设错误 → 寻找反例（至少3个）→ 逐个测试 → 推翻或确认
+**证伪流程**：假设可能有误 → 寻找反例（至少3个）→ 逐个测试 → 推翻或确认
 
 ---
 
-## 三角色协作流程
+## 三角色协作流程（待办驱动版）
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -538,43 +467,63 @@ curl.exe -X POST -H "Authorization: Bearer __TOKEN__" -H "Content-Type: applicat
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  Planner：构造场景                                          │
+│  【Planner角色】创建待办清单                                │
 │  输入：用户需求                                              │
 │  处理：5W2H参数化 + MECE分解                                 │
-│  输出：场景描述 + session_id（生成一次，后续复用）           │
+│  输出：待办清单 + session_id（生成一次，后续复用）           │
+│                                                              │
+│  待办清单（使用TodoWrite创建）：                               │
+│  - [in_progress] 执行：点击群聊"产品组"                       │
+│  - [pending] 评估：验证是否成功选中                          │
+│  - [pending] 执行：点击输入框                                │
+│  - [pending] 评估：验证是否激活                              │
+│  - [pending] 执行：输入消息"测试"                            │
+│  - [pending] 评估：验证是否输入成功                          │
+│  - [pending] 执行：点击发送按钮                              │
+│  - [pending] 评估：验证是否发送成功                          │
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  Executor：执行操作                                         │
-│  输入：Planner的场景描述 + session_id（复用同一个）          │
+│  【Executor角色】执行第一个"执行"待办                        │
+│  输入：待办描述 + session_id                                 │
 │  处理：screenshot → 五阶段分析 → click（background）         │
 │  输出：执行动作 + 理由 + 周边元素 + 图片路径                  │
+│  动作：更新待办状态，标记当前待办为completed                  │
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  Evaluator：验证结果                                        │
+│  【Evaluator角色】评估对应的"评估"待办                      │
 │  输入：Executor的输出 + 图片路径                             │
 │  处理：对比截图 → 寻找反例 → 测试                            │
-│  输出：验证失败（background模式不工作）                      │
+│  结果：验证失败（background模式不工作）                      │
+│  动作：标记执行待办为in_progress，要求重试                    │
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  Executor：收到反馈，调整后重试                             │
+│  【Executor角色】收到反馈，调整后重试                        │
 │  输入：Evaluator的反馈 + session_id（继续复用）              │
 │  处理：重新分析 → click（hijack）                           │
 │  输出：执行动作 + 理由 + 周边元素 + 图片路径                  │
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  Evaluator：验证成功                                        │
-│  输出：所有反例都被推翻，任务完成                            │
+│  【Evaluator角色】验证成功                                  │
+│  动作：标记评估待办为completed，继续下一个待办                │
+└─────────────────────────────────────────────────────────────┘
+                          ↓
+                     循环执行下一个待办...
+                          ↓
+┌─────────────────────────────────────────────────────────────┐
+│  所有待办完成 → 任务完成                                     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 **关键规则**：
 - session_id 由 Planner 生成一次
-- Executor 和 Evaluator 都复用同一个 session_id
-- 绝对禁止每个角色或每次调用生成新的 session_id
+- 所有角色都复用同一个 session_id
+- 绝对禁止每次角色切换时生成新的 session_id
+- 只有 Evaluator 认为通过才能进入下一个待办
+- 重试5次后仍失败 → 切换到 Planner 重新规划
 
 ---
 

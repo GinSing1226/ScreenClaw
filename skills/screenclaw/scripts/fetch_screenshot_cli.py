@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """
-ScreenClaw 截图获取脚本
+ScreenClaw 截图获取脚本（专用）
 
-用法：python fetch_screenshot_cli.py <api_url> <token> <window_id> [session_id]
+用法：python fetch_screenshot_cli.py <api_url> <token> <window_id> [session_id] [ai_app_type]
 
-失败时请使用：
-  Windows: fetch_screenshot_cli.ps1
-  macOS/Linux: fetch_screenshot_cli.sh
+参数说明：
+  api_url     - ScreenClaw服务地址
+  token       - 认证令牌
+  window_id   - 窗口ID
+  session_id  - 会话ID（可选，默认default）
+  ai_app_type - AI应用类型（可选，默认claude_code）
+
+降级路径：本脚本 → fetch_screenshot_cli.ps1 → fetch_screenshot_cli.sh
 """
 
 import sys
@@ -107,6 +112,7 @@ def main():
     token = sys.argv[2]
     window_id = int(sys.argv[3])
     session_id = sys.argv[4] if len(sys.argv) > 4 else "default"
+    ai_app_type = sys.argv[5] if len(sys.argv) > 5 else "claude_code"
 
     # 调用 API
     screenshot_url = f"{api_url.rstrip('/')}/api/screenshot"
@@ -117,7 +123,7 @@ def main():
     }
 
     body = {
-        "ai_app_type": "claude_code",
+        "ai_app_type": ai_app_type,
         "session_id": session_id,
         "window_id": window_id,
         "coordinate_type": "grid"

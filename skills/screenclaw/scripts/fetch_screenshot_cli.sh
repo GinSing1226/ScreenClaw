@@ -1,24 +1,17 @@
 #!/bin/bash
-# ScreenClaw 截图获取脚本（独立CLI版本 - Bash）
+# ScreenClaw 截图获取脚本（专用 - Bash）
 #
-# ===== 环境选择与 Fallback 机制 =====
-# 如果本脚本执行失败，请尝试：
+# 用法：
+#     bash fetch_screenshot_cli.sh <api_url> <token> <window_id> [session_id] [ai_app_type]
 #
-# ┌─────────────────────────────────────────────────────────────┐
-# │  优先级  │ 系统     │ 使用脚本                              │
-# ├─────────────────────────────────────────────────────────────┤
-# │  1       │ macOS    │ 本脚本 (Bash)                         │
-# │  2       │ Linux    │ 本脚本 (Bash)                         │
-# │  3       │ 任意     │ fetch_screenshot_cli.py (Python)      │
-# │  4       │ Windows  │ fetch_screenshot_cli.ps1 (PowerShell) │
-# └─────────────────────────────────────────────────────────────┘
+# 参数说明：
+#     api_url     - ScreenClaw服务地址
+#     token       - 认证令牌
+#     window_id   - 窗口ID
+#     session_id  - 会话ID（可选，默认default）
+#     ai_app_type - AI应用类型（可选，默认claude_code）
 #
-# 调用示例（Python fallback）：
-#     python fetch_screenshot_cli.py "http://192.168.10.190:12261" "TOKEN" 1380176
-#
-# 调用示例（Windows PowerShell）：
-#     powershell .\fetch_screenshot_cli.ps1 "http://192.168.10.190:12261" "TOKEN" 1380176
-# ========================================
+# 降级路径：本脚本 → fetch_screenshot_cli.py → fetch_screenshot_cli.ps1
 #
 # 用法一（推荐）：直接调用API
 #   bash fetch_screenshot_cli.sh "http://192.168.10.190:12261" "TOKEN123" 1380176
@@ -137,11 +130,12 @@ fi
 # 用法一：直接调用API
 if [ $# -lt 3 ]; then
     echo "用法一（推荐）：直接调用API"
-    echo "  bash fetch_screenshot_cli.sh <api_url> <token> <window_id> [session_id]"
+    echo "  bash fetch_screenshot_cli.sh <api_url> <token> <window_id> [session_id] [ai_app_type]"
     echo ""
     echo "示例："
     echo "  bash fetch_screenshot_cli.sh http://192.168.10.190:12261 TOKEN123 1380176"
     echo "  bash fetch_screenshot_cli.sh http://192.168.10.190:12261 TOKEN123 1380176 my-session"
+    echo "  bash fetch_screenshot_cli.sh http://192.168.10.190:12261 TOKEN123 1380176 my-session claude_code"
     echo ""
     echo "用法二（备用）：处理已保存的JSON响应"
     echo "  bash fetch_screenshot_cli.sh <json_file_path> <api_url>"
@@ -155,6 +149,7 @@ api_url="$1"
 token="$2"
 window_id="$3"
 session_id="${4:-default}"
+ai_app_type="${5:-claude_code}"
 
 # 检查curl是否存在
 if ! command -v curl &> /dev/null; then
@@ -172,7 +167,7 @@ trap "rm -f $tmp_json" EXIT
 http_code=$(curl -s -w "%{http_code}" -o "$tmp_json" \
     -H "Authorization: Bearer $token" \
     -H "Content-Type: application/json" \
-    -d "{\"ai_app_type\": \"claude_code\", \"session_id\": \"$session_id\", \"window_id\": $window_id, \"coordinate_type\": \"grid\"}" \
+    -d "{\"ai_app_type\": \"$ai_app_type\", \"session_id\": \"$session_id\", \"window_id\": $window_id, \"coordinate_type\": \"grid\"}" \
     "$screenshot_url")
 
 if [ "$http_code" != "200" ]; then

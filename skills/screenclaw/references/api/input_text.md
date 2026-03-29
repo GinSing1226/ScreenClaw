@@ -38,8 +38,8 @@ Content-Type: application/json
 | `ai_app_type` | string | 是 | - | AI应用类型（如claude_code） |
 | `session_id` | string | 是 | - | 会话唯一标识，整个会话保持一致 |
 | `window_id` | int | 是 | - | 目标窗口句柄，从get_window_list获取 |
-| `x` | float | 否 | - | 输入位置横坐标（0-100），可选 |
-| `y` | float | 否 | - | 输入位置纵坐标（0-100），可选 |
+| `x` | float | 否 | - | 输入位置横坐标（从截图的网格标记中直接读出的数字），推荐填写，无感操作时可实现先点击再输入 |
+| `y` | float | 否 | - | 输入位置纵坐标（从截图的网格标记中直接读出的数字），推荐填写，无感操作时可实现先点击再输入 |
 | `text` | string | 是 | - | 输入文本，\n表示换行 |
 | `newline_key` | string | 否 | "shift enter" | 换行键（仅background）：ctrl enter/enter |
 | `action_method` | string | 否 | "background" | 操作方式：background/hijack |

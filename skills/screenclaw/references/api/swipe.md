@@ -35,10 +35,10 @@ description: 触摸式滑动（翻页、切换标签、拖拽）
 | `session_id` | string | 是 | - | 会话唯一标识 | 获取当前会话唯一标识，获取不到则随机生成 |
 | `window_id` | int | 是 | - | 目标窗口句柄 | 从get_window_list获取 |
 | `main_window_id` | int | 否 | - | 主窗口ID（用于恢复窗口） | 从get_window_list获取 |
-| `start_x` | float | 是 | - | 起始横坐标（0-100） | 从截图分析得出 |
-| `start_y` | float | 是 | - | 起始纵坐标（0-100） | 从截图分析得出 |
-| `end_x` | float | 是 | - | 结束横坐标（0-100） | 从截图分析得出 |
-| `end_y` | float | 是 | - | 结束纵坐标（0-100） | 从截图分析得出 |
+| `start_x` | float | 是 | - | 起始横坐标（从截图的网格标记中直接读出的数字） | 从截图分析得出 |
+| `start_y` | float | 是 | - | 起始纵坐标（从截图的网格标记中直接读出的数字） | 从截图分析得出 |
+| `end_x` | float | 是 | - | 结束横坐标（从截图的网格标记中直接读出的数字） | 从截图分析得出 |
+| `end_y` | float | 是 | - | 结束纵坐标（从截图的网格标记中直接读出的数字） | 从截图分析得出 |
 | `action_method` | string | 否 | "background" | 操作方式：background/hijack | 优先background |
 
 ### 请求示例
