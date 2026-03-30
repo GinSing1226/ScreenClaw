@@ -143,6 +143,10 @@ async def take_screenshot(
         number_color = coord.number_color if coord else config.screenshot.default_number_color
         number_opacity = coord.number_opacity if coord else config.screenshot.default_number_opacity
 
+        # 调试：打印参数
+        print(f"[Screenshot] number_size={number_size} (from request={coord.number_size if coord else None})")
+        print(f"[Screenshot] number_density={number_density}, number_decimal={number_decimal}")
+
         renderer = GridRenderer(
             density=grid_density,
             grid_opacity=grid_opacity,
@@ -184,7 +188,8 @@ async def take_screenshot(
         instruction="screenshot",
         params={
             "coordinate_type": request.coordinate_type,
-            "grid": request.grid.model_dump() if request.grid else None
+            "grid": request.grid.model_dump() if request.grid else None,
+            "coordinate": request.coordinate.model_dump() if request.coordinate else None
         },
         result={"success": True, "image_path": image_path},
         duration_ms=duration_ms,
