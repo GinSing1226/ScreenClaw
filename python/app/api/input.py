@@ -71,6 +71,9 @@ async def input_text(request: InputTextRequest, req: Request = None, authorizati
     if config_service.is_process_blocked(process_info.process_name):
         return create_error_response("PROCESS_BLOCKED")
 
+    # 解码可能的 unicode 转义字符（需要在确认之前，因为确认时需要显示文本）
+    decoded_text = decode_unicode_escapes(request.text)
+
     # hijack 模式需要用户确认
     if request.action_method == "hijack":
         try:
@@ -103,9 +106,6 @@ async def input_text(request: InputTextRequest, req: Request = None, authorizati
         if not coords:
             return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
         physical_x, physical_y, virtual_x, virtual_y = coords
-
-    # 解码可能的 unicode 转义字符
-    decoded_text = decode_unicode_escapes(request.text)
 
     # 执行输入
     inject_result = windows_input.input_text(
