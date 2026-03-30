@@ -5,46 +5,52 @@
 # 中文会自动转换为Unicode编码。
 #
 # 用法：
-#     ./api_call.sh <api_url> <token> <endpoint> [ai_app_type] [参数...]
+#     ./api_call.sh <api_url> <token> <endpoint> [参数...]
 #
 # 示例：
 #     # 获取窗口列表
-#     ./api_call.sh http://192.168.10.190:12261 TOKEN get_window_list claude_code keyword=飞书
+#     ./api_call.sh http://192.168.10.190:12261 TOKEN get_window_list ai_app_type=claude_code session_id=test_20260330_120000 keyword=飞书
 #
 #     # 点击
-#     ./api_call.sh http://192.168.10.190:12261 TOKEN click claude_code window_id=123456 x=50 y=35
+#     ./api_call.sh http://192.168.10.190:12261 TOKEN click ai_app_type=claude_code session_id=test_20260330_120000 window_id=123456 x=50 y=35
 #
 #     # 输入文本
-#     ./api_call.sh http://192.168.10.190:12261 TOKEN input_text claude_code window_id=123456 text=你好
+#     ./api_call.sh http://192.168.10.190:12261 TOKEN input_text ai_app_type=claude_code session_id=test_20260330_120000 window_id=123456 text=你好
 #
-# 注意：截图API请使用 fetch_screenshot_cli.py 专用脚本
-# 降级路径：本脚本 → api_call.py → api_call.ps1 → 手动curl（见 references/api/call_templates.md）
+# 注意：
+#   - 截图API请使用 fetch_screenshot_cli.py 专用脚本
+#   - ai_app_type 和 session_id 必须显式传入，不支持自动生成
+#   - 降级路径：本脚本 → api_call.py → api_call.ps1 → 手动curl（见 references/api/call_templates.md）
 
 set -e
 
 if [ $# -lt 3 ]; then
-    echo "用法: $0 <api_url> <token> <endpoint> [ai_app_type] [参数...]"
+    echo "用法: $0 <api_url> <token> <endpoint> ai_app_type=<值> session_id=<值> [参数...]"
     exit 1
 fi
 
 API_URL="$1"
 TOKEN="$2"
 ENDPOINT="$3"
-AI_APP_TYPE="${4:-claude_code}"
-shift 4  # 移除前4个参数，剩余的是API参数
+shift 3  # 移除前3个参数，剩余的是API参数
 
 # 构建URL
 URL="${API_URL%/}/api/${ENDPOINT}"
 
 # 解析参数
 PARAMS=()
+HAS_AI_APP_TYPE=false
 HAS_SESSION_ID=false
 for arg in "$@"; do
     if [[ "$arg" =~ ^(.+?)=(.+)$ ]]; then
         key="${BASH_REMATCH[1]}"
         value="${BASH_REMATCH[2]}"
 
-        # 检查是否已有session_id
+        # 检查必需参数
+        if [[ "$key" == "ai_app_type" ]]; then
+            HAS_AI_APP_TYPE=true
+            AI_APP_TYPE="$value"
+        fi
         if [[ "$key" == "session_id" ]]; then
             HAS_SESSION_ID=true
         fi
@@ -58,14 +64,21 @@ for arg in "$@"; do
             value="$value"
         fi
 
-        PARAMS+=("\"$key\":\"$value\"")
+        # 跳过 ai_app_type，后面单独处理
+        if [[ "$key" != "ai_app_type" ]]; then
+            PARAMS+=("\"$key\":\"$value\"")
+        fi
     fi
 done
 
-# 自动添加 session_id（如果没有提供）
+# 强制检查：ai_app_type 和 session_id 必须由客户端显式传入
+if [[ "$HAS_AI_APP_TYPE" == "false" ]]; then
+    echo "错误：ai_app_type 参数必须显式传入。例如：ai_app_type=claude_code"
+    exit 1
+fi
 if [[ "$HAS_SESSION_ID" == "false" ]]; then
-    timestamp=$(date +"%Y%m%d_%H%M%S")
-    PARAMS+=("\"session_id\":\"screenclaw_${timestamp}\"")
+    echo "错误：session_id 参数必须显式传入。格式：app_name_YYYYMMDD_HHMMSS"
+    exit 1
 fi
 
 # 构建JSON

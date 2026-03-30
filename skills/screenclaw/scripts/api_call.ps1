@@ -2,7 +2,6 @@ param(
     [Parameter(Mandatory=$true)][string]$ApiUrl,
     [Parameter(Mandatory=$true)][string]$Token,
     [Parameter(Mandatory=$true)][string]$Endpoint,
-    [Parameter()][string]$AiAppType = "claude_code",
     [Parameter(ValueFromRemainingArguments=$true)][string[]]$RemainingArgs
 )
 
@@ -68,16 +67,23 @@ function Parse-Params {
 
 $scriptParams = Parse-Params -ParamArgs $RemainingArgs
 
+# 强制检查：ai_app_type 和 session_id 必须由客户端显式传入
+if (-not $scriptParams.ContainsKey('ai_app_type')) {
+    Write-Error "错误：ai_app_type 参数必须显式传入。例如：ai_app_type=claude_code"
+    exit 1
+}
 if (-not $scriptParams.ContainsKey('session_id')) {
-    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-    $scriptParams['session_id'] = "screenclaw_$timestamp"
+    Write-Error "错误：session_id 参数必须显式传入。格式：app_name_YYYYMMDD_HHMMSS"
+    exit 1
 }
 
 $body = @{
-    ai_app_type = $AiAppType
+    ai_app_type = $scriptParams['ai_app_type']
 }
 foreach ($kv in $scriptParams.GetEnumerator()) {
-    $body[$kv.Key] = $kv.Value
+    if ($kv.Key -ne 'ai_app_type') {
+        $body[$kv.Key] = $kv.Value
+    }
 }
 
 $jsonBody = ConvertTo-JsonString -Value $body

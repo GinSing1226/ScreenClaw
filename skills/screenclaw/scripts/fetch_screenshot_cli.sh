@@ -2,20 +2,32 @@
 # ScreenClaw 截图获取脚本（专用 - Bash）
 #
 # 用法：
-#     bash fetch_screenshot_cli.sh <api_url> <token> <window_id> [session_id] [ai_app_type]
+#     bash fetch_screenshot_cli.sh <api_url> <token> <window_id> <session_id> <ai_app_type> [参数...]
 #
 # 参数说明：
 #     api_url     - ScreenClaw服务地址
 #     token       - 认证令牌
 #     window_id   - 窗口ID
-#     session_id  - 会话ID（可选，默认default）
-#     ai_app_type - AI应用类型（可选，默认claude_code）
+#     session_id  - 会话ID（必需）
+#     ai_app_type - AI应用类型（必需）
+#
+# 网格参数（可选）：
+#     grid_density=<值>      - 网格密度，默认5.0
+#     grid_opacity=<值>       - 网格透明度(0-100)，默认50
+#     grid_color=<值>         - 网格颜色，默认#00FF00
+#
+# 数字参数（可选）：
+#     number_density=<值>     - 数字密度，默认2
+#     number_decimal=<值>      - 小数位数(0-4)，默认0
+#     number_size=<值>         - 字体大小(4-32)，默认8
+#     number_color=<值>        - 数字颜色，默认#00FF00
+#     number_opacity=<值>      - 数字透明度(0-100)，默认100
 #
 # 降级路径：本脚本 → fetch_screenshot_cli.py → fetch_screenshot_cli.ps1
 #
 # 用法一（推荐）：直接调用API
-#   bash fetch_screenshot_cli.sh "http://192.168.10.190:12261" "TOKEN123" 1380176
-#   bash fetch_screenshot_cli.sh "http://192.168.10.190:12261" "TOKEN123" 1380176 "my-session"
+#   bash fetch_screenshot_cli.sh "http://192.168.10.190:12261" "TOKEN123" 1380176 "my-session" "claude_code"
+#   bash fetch_screenshot_cli.sh "http://192.168.10.190:12261" "TOKEN123" 1380176 "my-session" "claude_code" "grid_density=8" "number_size=14"
 #
 # 用法二（备用）：处理已保存的JSON响应（会自动删除该JSON文件）
 #   bash fetch_screenshot_cli.sh "/tmp/screenshot_response.json" "http://192.168.10.190:12261"
@@ -54,13 +66,62 @@ get_data_dir() {
     esac
 }
 
+# 构建网格和数字参数
+build_grid_params() {
+    local grid_parts=""
+    local coord_parts=""
+
+    for arg in "$@"; do
+        if [[ "$arg" =~ ^(.+?)=(.+)$ ]]; then
+            key="${BASH_REMATCH[1]}"
+            value="${BASH_REMATCH[2]}"
+
+            case "$key" in
+                grid_density)
+                    grid_parts="$grid_parts,\"density\":$value"
+                    ;;
+                grid_opacity)
+                    grid_parts="$grid_parts,\"opacity\":$value"
+                    ;;
+                grid_color)
+                    grid_parts="$grid_parts,\"color\":\"$value\""
+                    ;;
+                number_density)
+                    coord_parts="$coord_parts,\"number_density\":$value"
+                    ;;
+                number_decimal)
+                    coord_parts="$coord_parts,\"number_decimal\":$value"
+                    ;;
+                number_size)
+                    coord_parts="$coord_parts,\"number_size\":$value"
+                    ;;
+                number_color)
+                    coord_parts="$coord_parts,\"number_color\":\"$value\""
+                    ;;
+                number_opacity)
+                    coord_parts="$coord_parts,\"number_opacity\":$value"
+                    ;;
+            esac
+        fi
+    done
+
+    local result=""
+    if [ -n "$grid_parts" ]; then
+        grid_parts="${grid_parts:1}"  # 移除开头的逗号
+        result="$result,\"grid\":{$grid_parts}"
+    fi
+    if [ -n "$coord_parts" ]; then
+        coord_parts="${coord_parts:1}"  # 移除开头的逗号
+        result="$result,\"coordinate\":{$coord_parts}"
+    fi
+
+    echo "$result"
+}
+
 # 处理结果并保存图片
 process_result() {
     local json_file="$1"
     local api_url="$2"
-    local sess_id="${3:-default}"
-    local app_type="${4:-claude_code}"
-    local win_id="${5:-0}"
 
     # 检查jq是否安装
     if ! command -v jq &> /dev/null; then
@@ -86,8 +147,11 @@ process_result() {
         echo "$image_path"
     else
         # 远程场景：服务端只返回base64，客户端自己生成符合规则的路径
-        # 目录规则：{ai_app_type}__{session_id}__{window_id}__{yyyy-MM-dd}
-        # 文件规则：screenshot_{HHMMSS}_{rand4}.png
+        # 从JSON中提取参数信息（如果有的话）
+        local sess_id=$(jq -r '.data.session_id // "default"' "$json_file")
+        local app_type=$(jq -r '.data.ai_app_type // "claude_code"' "$json_file")
+        local win_id=$(jq -r '.data.window_id // "0"' "$json_file")
+
         local date_str=$(date +"%Y-%m-%d")
         local dir_name="${app_type}__${sess_id}__${win_id}__${date_str}"
 
@@ -118,8 +182,8 @@ if [[ "$1" =~ \.json$ ]] && [ -n "$2" ]; then
         exit 1
     fi
 
-    # 处理结果（JSON文件场景无法获取原始参数，使用默认值）
-    output_path=$(process_result "$json_path" "$api_url" "$sess_id" "$app_type" "$win_id")
+    # 处理结果
+    output_path=$(process_result "$json_path" "$api_url")
     echo "$output_path"
 
     # 自动删除临时JSON文件
@@ -129,14 +193,25 @@ if [[ "$1" =~ \.json$ ]] && [ -n "$2" ]; then
 fi
 
 # 用法一：直接调用API
-if [ $# -lt 3 ]; then
+if [ $# -lt 5 ]; then
     echo "用法一（推荐）：直接调用API"
-    echo "  bash fetch_screenshot_cli.sh <api_url> <token> <window_id> [session_id] [ai_app_type]"
+    echo "  bash fetch_screenshot_cli.sh <api_url> <token> <window_id> <session_id> <ai_app_type> [参数...]"
     echo ""
     echo "示例："
-    echo "  bash fetch_screenshot_cli.sh http://192.168.10.190:12261 TOKEN123 1380176"
-    echo "  bash fetch_screenshot_cli.sh http://192.168.10.190:12261 TOKEN123 1380176 my-session"
     echo "  bash fetch_screenshot_cli.sh http://192.168.10.190:12261 TOKEN123 1380176 my-session claude_code"
+    echo "  bash fetch_screenshot_cli.sh http://192.168.10.190:12261 TOKEN123 1380176 my-session claude_code grid_density=8 number_size=14"
+    echo ""
+    echo "网格参数（可选）："
+    echo "  grid_density=<值>      - 网格密度，默认5.0"
+    echo "  grid_opacity=<值>       - 网格透明度(0-100)，默认50"
+    echo "  grid_color=<值>         - 网格颜色，默认#00FF00"
+    echo ""
+    echo "数字参数（可选）："
+    echo "  number_density=<值>     - 数字密度，默认2"
+    echo "  number_decimal=<值>      - 小数位数(0-4)，默认0"
+    echo "  number_size=<值>         - 字体大小(4-32)，默认8"
+    echo "  number_color=<值>        - 数字颜色，默认#00FF00"
+    echo "  number_opacity=<值>      - 数字透明度(0-100)，默认100"
     echo ""
     echo "用法二（备用）：处理已保存的JSON响应"
     echo "  bash fetch_screenshot_cli.sh <json_file_path> <api_url>"
@@ -149,8 +224,9 @@ fi
 api_url="$1"
 token="$2"
 window_id="$3"
-session_id="${4:-default}"
-ai_app_type="${5:-claude_code}"
+session_id="$4"
+ai_app_type="$5"
+shift 5  # 移除前5个参数，剩余的是网格/数字参数
 
 # 检查curl是否存在
 if ! command -v curl &> /dev/null; then
@@ -161,6 +237,12 @@ fi
 # 构造请求URL
 screenshot_url="${api_url%/}/api/screenshot"
 
+# 构建网格和数字参数
+grid_params=$(build_grid_params "$@")
+
+# 构建JSON
+JSON="{\"ai_app_type\":\"$ai_app_type\",\"session_id\":\"$session_id\",\"window_id\":$window_id,\"coordinate_type\":\"grid\"$grid_params}"
+
 # 调用API并保存到临时文件
 tmp_json=$(mktemp)
 trap "rm -f $tmp_json" EXIT
@@ -168,7 +250,7 @@ trap "rm -f $tmp_json" EXIT
 http_code=$(curl -s -w "%{http_code}" -o "$tmp_json" \
     -H "Authorization: Bearer $token" \
     -H "Content-Type: application/json" \
-    -d "{\"ai_app_type\": \"$ai_app_type\", \"session_id\": \"$session_id\", \"window_id\": $window_id, \"coordinate_type\": \"grid\"}" \
+    -d "$JSON" \
     "$screenshot_url")
 
 if [ "$http_code" != "200" ]; then
@@ -178,5 +260,5 @@ if [ "$http_code" != "200" ]; then
 fi
 
 # 处理结果
-output_path=$(process_result "$tmp_json" "$api_url" "$session_id" "$ai_app_type" "$window_id")
+output_path=$(process_result "$tmp_json" "$api_url")
 echo "$output_path"

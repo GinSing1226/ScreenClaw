@@ -44,9 +44,11 @@ description: |
 
 **为什么要先阅读**：避免因不熟悉模板格式导致的命令错误（如JSON引号转义问题）
 
-### 步骤2：创建待办清单并按角色切换执行
+### 步骤2：准备会话参数并按角色切换执行
 
-- [ ] **生成 session_id**（仅一次）：格式 `app_name_YYYYMMDD_HHMMSS`，使用下划线分隔
+- [ ] **准备必需参数**：
+  - `ai_app_type`：当前AI应用类型（如 `claude_code`）
+  - `session_id`：会话标识符，格式 `app_name_YYYYMMDD_HHMMSS`，整个会话必须使用同一个
 - [ ] **进入Planner角色**：分析需求、创建待办清单
 - [ ] **进入Executor角色**：执行当前待办、返回结果
 - [ ] **进入Evaluator角色**：验证执行结果
@@ -92,7 +94,7 @@ ScreenClaw技能采用**三层架构**来组织任务执行：
 
 **第1步：Planner角色**（规划）
 - 用TodoWrite创建待办清单
-- 生成session_id（仅一次）：`wechat_20260330_143025`
+- 首行设置全局参数：`session_id=wechat_20260330_143025, ai_app_type=claude_code, ...`
 
 **第2步：Executor角色**（执行 - 第一个待办）
 - 调用 `get_window_list` 找到微信窗口
@@ -152,8 +154,8 @@ ScreenClaw技能采用**三层架构**来组织任务执行：
 ```
 
 **关键规则**：
-- Planner使用TodoWrite创建待办清单，生成session_id（仅一次）
-- 所有角色共享同一个session_id，绝对禁止每次生成新的
+- Planner使用TodoWrite创建待办清单，首行必须包含全局参数（session_id、ai_app_type等）
+- 所有角色共享同一个session_id，整个会话期间绝对禁止更换
 - 只有Evaluator认为通过才能进入下一个待办
 
 ### 规则2：脚本调用规范
@@ -165,23 +167,30 @@ ScreenClaw技能采用**三层架构**来组织任务执行：
 
 **通用API调用（非截图）**：
 ```bash
-python scripts/api_call.py <api_url> <token> <endpoint> <ai_app_type> [参数...]
+python scripts/api_call.py <api_url> <token> <endpoint> ai_app_type=<值> session_id=<值> [其他参数...]
 ```
 
 **示例：**
 ```bash
 # 获取窗口列表（建议始终带include_children=true + children_filter=titled）
-python scripts/api_call.py http://192.168.10.190:12261 TOKEN get_window_list claude_code keyword=feishu include_children=true children_filter=titled
-
-# 点击
-python scripts/api_call.py http://192.168.10.190:12261 TOKEN click claude_code window_id=123456 x=50 y=35
+python scripts/api_call.py http://192.168.10.190:12261 TOKEN get_window_list ai_app_type=claude_code session_id=wechat_20260330_143025 keyword=feishu include_children=true children_filter=titled
 ```
 
 **截图API调用（专用）**：
 ```bash
-python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> [session_id] [ai_app_type]
+python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> <session_id> <ai_app_type> [网格和数字参数...]
 ```
-  - **中文处理**：直接传递中文即可，脚本会自动转换为Unicode编码
+  - **必需参数**：api_url, token, window_id, session_id, ai_app_type
+  - **可选网格参数**：grid_density, grid_opacity, grid_color
+  - **可选数字参数**：number_density, number_decimal, number_size, number_color, number_opacity
+  - 示例：
+    ```bash
+    # 基础用法（使用默认网格参数）
+    python scripts/fetch_screenshot_cli.py http://192.168.10.190:12261 TOKEN 1380176 my_session claude_code
+
+    # 自定义网格密度和数字大小
+    python scripts/fetch_screenshot_cli.py http://192.168.10.190:12261 TOKEN 1380176 my_session claude_code grid_density=8 number_size=14
+    ```
 
 详细用法 → `scripts/README.md`
 
@@ -199,13 +208,14 @@ python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> [session_id
 已在步骤1中阅读 `references/config.md`，获取：
 - API基础地址
 - 认证Token
-- ai_app_type（当前AI应用类型）
-- **session_id：整个会话使用同一个，绝对不要每次生成新的**
-- **main_window_id：必填，用于激活最小化窗口**
+- **ai_app_type**：当前AI应用类型，**每次API调用必须显式传入**
+- **session_id**：会话标识符，**整个会话使用同一个，每次API调用必须显式传入**
+- **main_window_id**：必填，用于激活最小化窗口
 
-> ⚠️ **session_id 延续规则**：
-> - 首次生成后，后续所有API调用**必须显式传入**同一个session_id
-> - **人在回路干涉时**（用户反馈后继续操作），**必须延续使用最初的session_id**，禁止重新生成
+> ⚠️ **session_id 和 ai_app_type 强制规则**：
+> - 这两个参数**必须由客户端显式传入**，脚本不会自动生成
+> - 整个会话期间**必须使用同一个session_id**，绝对禁止更换
+> - **人在回路干涉时**（用户反馈后继续操作），**必须延续使用最初的session_id**
 
 > ⚠️ **窗口ID选择规则**：
 > - **main_window_id**：必填，用于激活/恢复窗口（如应用最小化时）
@@ -263,10 +273,10 @@ python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> [session_id
 | 阶段 | 内容 |
 |------|------|
 | **Trigger** | 收到用户需求 或 Evaluator的重规划请求 |
-| **Input** | 用户需求 / Evaluator的反馈 |
+| **Input** | 用户需求 / Evaluator的反馈 / 必需参数（ai_app_type、session_id） |
 | **Process** | 需求澄清 → 场景构造 → 目标分解 → 创建待办清单 |
-| **Output** | 待办清单 + session_id |
-| **Exception** | 需求不清晰时向用户提问 |
+| **Output** | 待办清单 |
+| **Exception** | 需求不清晰时向用户提问；必需参数缺失时向用户索取 |
 
 **职责**：
 - 理解用户需求，澄清歧义
@@ -277,12 +287,12 @@ python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> [session_id
   - [in_progress] 执行：具体操作描述
   - [pending] 评估：验证标准描述
   ```
-- **生成 session_id**（首次规划时生成，格式：`app_name_YYYYMMDD_HHMMSS`）
+- **确保首行包含全局参数**：session_id、ai_app_type、main_window_id、api_url、token
 - **重试失败时**：重新分析场景，调整计划步骤
   - 例如：找不到群聊 → 改为搜索群聊
 - **不负责**：操作模式选择、参数调整、API调用
 
-**输出**：待办清单（通过TodoWrite）+ session_id
+**输出**：待办清单（通过TodoWrite）
 
 **待办格式示例**：
 ```
@@ -293,7 +303,7 @@ python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> [session_id
 - [pending] 评估：验证是否激活
 ```
 
-> **首行为全局参数行**：所有后续执行/评估待办共享这些参数，避免重复填写。人在回路干涉时**必须延续首行的session_id**，禁止重新生成。
+> **首行为全局参数行**：所有后续执行/评估待办共享这些参数，避免重复填写。人在回路干涉时**必须延续首行的session_id**。
 
 ---
 
@@ -310,26 +320,26 @@ python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> [session_id
 | 阶段 | 内容 |
 |------|------|
 | **Trigger** | 待办清单中当前待办状态变为in_progress |
-| **Input** | 待办描述、session_id、当前状态 |
+| **Input** | 待办描述、全局参数（session_id、ai_app_type等）、当前状态 |
 | **Process** | 调用screenshot获取图片 → 五阶段分析 → 调用操作API → 返回结果 |
 | **Output** | 执行动作 + 执行理由 + 周边元素（≥3个） + 图片路径 |
 | **Exception** | 失败时返回错误信息 + 建议重试方案 |
 
 **职责**：
 - 读取待办清单，找到当前in_progress的"执行"待办
+- 从首行全局参数中获取session_id、ai_app_type等必需参数
 - 自行决定操作模式（background/hijack）
 - 自行调整参数（网格密度、透明度等）
 - 分析截图，精确定位坐标
-- 调用API执行操作（**使用session_id，绝对不要生成新的**）
+- 调用API执行操作（**每次调用必须显式传入ai_app_type和session_id**）
 - **完成执行后更新待办状态**：将当前待办标记为completed
 - **每一步都必须返回完整输出格式**（见下方）
 - **失败时**：根据Evaluator的反馈调整参数重试
 - **脚本失败时**：按规则2降级路径切换
 
 **输入**：
-- 来自待办清单：当前待办描述
+- 来自待办清单：当前待办描述、全局参数行
 - 来自Evaluator：验证反馈、调整建议
-- 共享：session_id
 
 **输出协议（每一步必须遵守）**：
 
@@ -374,7 +384,7 @@ Executor的Process由3个节点组成，每个节点独立遵循T-IPO-E：
 | 阶段 | 内容 |
 |------|------|
 | **Trigger** | 待办状态变为in_progress |
-| **Input** | window_id, session_id, ai_app_type |
+| **Input** | window_id, 全局参数（session_id、ai_app_type） |
 | **Process** | 执行 `fetch_screenshot_cli.py <api_url> <token> <window_id> <session_id> <ai_app_type>` |
 | **Output** | 图片路径 |
 | **Exception** | 脚本失败 → 按降级路径切换（py→ps1→sh→手动curl） |
@@ -394,8 +404,8 @@ Executor的Process由3个节点组成，每个节点独立遵循T-IPO-E：
 | 阶段 | 内容 |
 |------|------|
 | **Trigger** | 坐标定位完成 |
-| **Input** | 坐标(x,y)、window_id、操作类型 |
-| **Process** | 执行 `api_call.py <api_url> <token> <endpoint> <ai_app_type> [参数...]` |
+| **Input** | 坐标(x,y)、window_id、操作类型、全局参数（session_id、ai_app_type） |
+| **Process** | 执行 `api_call.py <api_url> <token> <endpoint> ai_app_type=<值> session_id=<值> [其他参数...]` |
 | **Output** | API响应结果 |
 | **Exception** | 操作失败 → 切换操作方式（background→hijack）或切换窗口ID（主窗口→子窗口） |
 
@@ -593,6 +603,7 @@ curl -X POST \
 4. 验证方法：对比截图，确认操作作用于正确窗口
 
 #### 2. 坐标是否正确
+**最常见问题，90%操作失败的原因**，必须经过evaluator多次评估坐标是否正确
 
 **判断标准**：
 - 需要长时间分析思考才能确定坐标
@@ -616,6 +627,7 @@ curl -X POST \
 - **解决**：使用 `main_window_id` 激活窗口，或请求用户协助
 
 #### 3. 操作方式是否正确（background/hijack）
+慎重切换操作方式，必须有明确的判断标准和验证过程。先排查窗口和坐标问题
 
 **判断标准**：
 - 子窗口和坐标都正确，但操作仍然无效
