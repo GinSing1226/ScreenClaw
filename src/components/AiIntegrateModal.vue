@@ -19,7 +19,7 @@ const activeTab = ref<TabType>('openclaw')
 
 const serviceUrl = computed(() => `http://${status.value.local_ip}:${status.value.port}`)
 const token = computed(() => status.value.token)
-const skillInstallCmd = 'npx skills add GinSing1226/ScreenClaw'
+const skillInstallCmd = 'npx skills add https://github.com/GinSing1226/ScreenClaw'
 
 const openclawPrompt = computed(() => {
   return `${t('aiIntegrate.promptTitle')}

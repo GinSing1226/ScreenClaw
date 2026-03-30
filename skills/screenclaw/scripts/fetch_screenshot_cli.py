@@ -28,49 +28,48 @@ except ImportError:
     sys.exit(1)
 
 
-def process_result(result, api_url):
+def process_result(result, api_url, session_id="default", ai_app_type="claude_code", window_id=0):
     """处理API响应结果"""
     if not result.get("success"):
         print(f"API 错误: {result.get('message', 'Unknown error')}")
         return None
 
-    image_path = result["data"]["image_path"]
-    image_base64 = result["data"]["image_base64"]
-
-    # 判断本地还是局域网
+    data = result.get("data", {})
     is_local = any(indicator in api_url.lower() for indicator in ["localhost", "127.0.0.1", "::1"])
 
     if is_local:
-        # 本地场景：直接返回路径
-        return image_path
+        # 本地场景：服务端返回image_path，直接使用
+        return data.get("image_path")
     else:
-        # Remote scenario: save to local
-        # Extract directory name and filename from image_path
-        original_path = Path(image_path)
-        dir_name = original_path.parent.name
-        filename = original_path.name
+        # 远程场景：服务端只返回base64，客户端自己生成符合规则的路径
+        # 目录规则：{ai_app_type}__{session_id}__{window_id}__{yyyy-MM-dd}
+        # 文件规则：screenshot_{HHMMSS}_{rand4}.png
+        image_base64 = data.get("image_base64")
+        if not image_base64:
+            print("API 错误: 远程响应中没有image_base64")
+            return None
 
-        # Determine save directory
+        from datetime import datetime
+        import random
+        import string
+
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        dir_name = f"{ai_app_type}__{session_id}__{window_id}__{date_str}"
+
+        time_str = datetime.now().strftime("%H%M%S")
+        rand_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
+        filename = f"screenshot_{time_str}_{rand_str}.png"
+
+        # 确定保存目录
         if os.name == 'nt':  # Windows
             base_dir = os.path.expandvars("%APPDATA%\\screenclaw\\data")
         else:  # Linux/macOS
             base_dir = os.path.expanduser("~/.local/share/screenclaw/data")
 
         output_dir = Path(base_dir) / dir_name
-
-        # Handle directory name encoding issues
-        try:
-            output_dir.mkdir(parents=True, exist_ok=True)
-        except (OSError, UnicodeError):
-            # Fallback: use timestamp as directory name if original name fails
-            import time
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            output_dir = Path(base_dir) / timestamp
-            output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         output_path = output_dir / filename
-
-        # Save image
         with open(output_path, "wb") as f:
             f.write(base64.b64decode(image_base64))
 
@@ -91,7 +90,7 @@ def main():
             sys.exit(1)
 
         # 处理结果
-        output_path = process_result(result, api_url)
+        output_path = process_result(result, api_url, session_id, ai_app_type, window_id)
 
         # 自动删除临时JSON文件
         try:
@@ -137,7 +136,7 @@ def main():
         print(f"API 调用失败: {e}")
         sys.exit(1)
 
-    output_path = process_result(result, api_url)
+    output_path = process_result(result, api_url, session_id, ai_app_type, window_id)
     if output_path:
         print(output_path)
 

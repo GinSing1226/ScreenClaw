@@ -35,7 +35,7 @@ Content-Type: application/json
 | `ai_app_type` | string | 是 | - | AI应用类型 | 判断当前AI是什么应用，就用什么值 |
 | `session_id` | string | 是 | - | 会话唯一标识 | 获取当前会话唯一标识，获取不到则随机生成 |
 | `keyword` | string | 否 | "" | 模糊搜索窗口标题或进程名 | 用户描述的应用名称 |
-| `include_children` | bool | 否 | false | 是否返回子窗口 | 需要操作子窗口时设为true |
+| `include_children` | bool | **强烈建议true** | false | 是否返回子窗口。**建议始终设为true**， 大部分操作需要子窗口才能响应 |
 | `children_filter` | string | 否 | "titled" | 子窗口过滤策略：all/titled | titled=仅返回有标题的子窗口 |
 
 ### 请求示例

@@ -34,7 +34,7 @@ description: 执行多步骤的固定流程（如登录、导航）、减少网�
 | `ai_app_type` | string | 是 | - | AI应用类型 | 判断当前AI是什么应用，就用什么值 |
 | `session_id` | string | 是 | - | 会话唯一标识 | 获取当前会话唯一标识，获取不到则随机生成 |
 | `window_id` | int | 是 | - | 目标窗口句柄 | 从get_window_list获取 |
-| `main_window_id` | int | 否 | - | 主窗口ID（用于恢复窗口） | 从get_window_list获取 |
+| `main_window_id` | int | 建议 | - | 主窗口ID（用于激活最小化窗口） | 从get_window_list获取 |
 | `instructions` | array | 是 | - | 指令列表 | 根据操作流程设置 |
 
 ### instructions 结构

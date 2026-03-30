@@ -36,7 +36,7 @@ description: 触发快捷键功能（Ctrl+C复制）、发送特殊按键（Ente
 | `ai_app_type` | string | 是 | - | AI应用类型 | 判断当前AI是什么应用，就用什么值 |
 | `session_id` | string | 是 | - | 会话唯一标识 | 获取当前会话唯一标识，获取不到则随机生成 |
 | `window_id` | int | 是 | - | 目标窗口句柄 | 从get_window_list获取 |
-| `main_window_id` | int | 否 | - | 主窗口ID（用于恢复窗口） | 从get_window_list获取 |
+| `main_window_id` | int | 建议 | - | 主窗口ID（用于激活最小化窗口） | 从get_window_list获取 |
 | `key` | string | 是 | - | 按键，空格分隔组合键 | 根据需要设置 |
 | `x` | float | 否 | - | 先点击此横坐标再按键 | 从截图分析得出 |
 | `y` | float | 否 | - | 先点击此纵坐标再按键 | 从截图分析得出 |

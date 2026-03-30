@@ -85,7 +85,7 @@ git clone https://github.com/GinSing1226/ScreenClaw.git && cd ScreenClaw && pip 
 In Claude Code, OpenClaw, OpenCode, Codex, and other AI Agent tools, execute:
 
 ```bash
-npx skills add GinSing1226/ScreenClaw
+npx skills add https://github.com/GinSing1226/ScreenClaw
 ```
 
 After installation, AI can automatically call ScreenClaw API for desktop software automation.

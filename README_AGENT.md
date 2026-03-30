@@ -24,7 +24,7 @@ Ask user to provide from ScreenClaw app:
 ### 3. Install Skill
 
 ```bash
-npx skills add GinSing1226/ScreenClaw
+npx skills add https://github.com/GinSing1226/ScreenClaw
 ```
 
 ### 4. Configure

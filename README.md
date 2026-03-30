@@ -85,7 +85,7 @@ git clone https://github.com/GinSing1226/ScreenClaw.git && cd ScreenClaw && pip 
 在 Claude Code、OpenClaw、OpenCode、Codex 等 AI Agent 工具中执行：
 
 ```bash
-npx skills add GinSing1226/ScreenClaw
+npx skills add https://github.com/GinSing1226/ScreenClaw
 ```
 
 安装后，AI 即可自动调用 ScreenClaw API 进行桌面软件自动化操作。

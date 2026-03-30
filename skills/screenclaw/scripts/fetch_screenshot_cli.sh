@@ -58,6 +58,9 @@ get_data_dir() {
 process_result() {
     local json_file="$1"
     local api_url="$2"
+    local sess_id="${3:-default}"
+    local app_type="${4:-claude_code}"
+    local win_id="${5:-0}"
 
     # 检查jq是否安装
     if ! command -v jq &> /dev/null; then
@@ -75,24 +78,22 @@ process_result() {
         exit 1
     fi
 
-    local image_path=$(jq -r '.data.image_path' "$json_file")
-    local image_base64=$(jq -r '.data.image_base64' "$json_file")
+    local image_path=$(jq -r '.data.image_path // empty' "$json_file")
+    local image_base64=$(jq -r '.data.image_base64 // empty' "$json_file")
 
     if is_local_url "$api_url"; then
         # 本地场景：直接返回路径
         echo "$image_path"
     else
-        # 局域网场景：保存到本地
-        # 路径格式兼容：D:\path\to\file 或 D:/path/to/file
-        local dir_name=$(echo "$image_path" | sed 's|\\|/|g' | xargs dirname | xargs basename)
-        local filename=$(echo "$image_path" | sed 's|\\|/|g' | xargs basename)
+        # 远程场景：服务端只返回base64，客户端自己生成符合规则的路径
+        # 目录规则：{ai_app_type}__{session_id}__{window_id}__{yyyy-MM-dd}
+        # 文件规则：screenshot_{HHMMSS}_{rand4}.png
+        local date_str=$(date +"%Y-%m-%d")
+        local dir_name="${app_type}__${sess_id}__${win_id}__${date_str}"
 
-        # 校验路径解析结果
-        if [ -z "$dir_name" ] || [ -z "$filename" ]; then
-            echo -e "${RED}路径解析失败：dir_name或filename为空${NC}" >&2
-            echo "原始路径: $image_path" >&2
-            exit 1
-        fi
+        local time_str=$(date +"%H%M%S")
+        local rand_str=$(cat /dev/urandom | tr -dc 'a-z0-9' | head -c 4)
+        local filename="screenshot_${time_str}_${rand_str}.png"
 
         # 确定保存目录
         local base_dir=$(get_data_dir)
@@ -117,8 +118,8 @@ if [[ "$1" =~ \.json$ ]] && [ -n "$2" ]; then
         exit 1
     fi
 
-    # 处理结果
-    output_path=$(process_result "$json_path" "$api_url")
+    # 处理结果（JSON文件场景无法获取原始参数，使用默认值）
+    output_path=$(process_result "$json_path" "$api_url" "$sess_id" "$app_type" "$win_id")
     echo "$output_path"
 
     # 自动删除临时JSON文件
@@ -177,5 +178,5 @@ if [ "$http_code" != "200" ]; then
 fi
 
 # 处理结果
-output_path=$(process_result "$tmp_json" "$api_url")
+output_path=$(process_result "$tmp_json" "$api_url" "$session_id" "$ai_app_type" "$window_id")
 echo "$output_path"

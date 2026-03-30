@@ -39,17 +39,15 @@ if ($isLocal) {
     Write-Output $response.data.image_path
 }
 else {
-    # 获取图片路径并提取目录名和文件名
-    $imagePath = $response.data.image_path
-    $pathParts = $imagePath -split '[\\/]' | Where-Object { $_ -ne '' }
+    # 远程场景：服务端只返回base64，客户端自己生成符合规则的路径
+    # 目录规则：{ai_app_type}__{session_id}__{window_id}__{yyyy-MM-dd}
+    # 文件规则：screenshot_{HHMMSS}_{rand4}.png
+    $dateStr = Get-Date -Format "yyyy-MM-dd"
+    $dirName = "${AiAppType}__${SessionId}__${WindowId}__${dateStr}"
 
-    if ($pathParts.Count -ge 2) {
-        $dirName = $pathParts[-2]
-        $filename = $pathParts[-1]
-    } else {
-        $dirName = $SessionId
-        $filename = "screenshot.png"
-    }
+    $timeStr = Get-Date -Format "HHmmss"
+    $randChars = -join ((97..122) + (48..57) | Get-Random -Count 4 | ForEach-Object { [char]$_ })
+    $filename = "screenshot_${timeStr}_${randChars}.png"
 
     # 确保data目录存在
     $dataDir = "$env:APPDATA\screenclaw\data"
@@ -59,22 +57,18 @@ else {
 
     $outputDir = Join-Path $dataDir $dirName
 
-    # 创建目录
     try {
         if (-not (Test-Path $outputDir)) {
             New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
         }
     }
     catch {
-        # 回退：使用时间戳作为目录名
-        $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-        $outputDir = Join-Path $dataDir $timestamp
-        New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+        Write-Error "创建目录失败: $_"
+        exit 1
     }
 
     $outputPath = Join-Path $outputDir $filename
 
-    # 保存图片
     try {
         $bytes = [Convert]::FromBase64String($response.data.image_base64)
         [System.IO.File]::WriteAllBytes($outputPath, $bytes)

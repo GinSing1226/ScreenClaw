@@ -39,7 +39,7 @@ Content-Type: application/json
 | `ai_app_type` | string | 是 | - | AI应用类型（如claude_code） |
 | `session_id` | string | 是 | - | 会话唯一标识，整个会话保持一致 |
 | `window_id` | int | 是 | - | 目标窗口句柄，从get_window_list获取 |
-| `main_window_id` | int | 否 | - | 主窗口ID（用于恢复窗口） |
+| `main_window_id` | int | 建议 | - | 主窗口ID（用于激活最小化窗口）， 从get_window_list获取 |
 | `x` | float | 是 | - | 横坐标（从截图的网格标记中直接读出的数字，如50表示中间位置） |
 | `y` | float | 是 | - | 纵坐标（从截图的网格标记中直接读出的数字，如30表示偏上位置） |
 | `action_method` | string | 否 | "background" | 操作方式：background/hijack |
