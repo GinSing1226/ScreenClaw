@@ -19,15 +19,14 @@ const activeTab = ref<TabType>('openclaw')
 
 const serviceUrl = computed(() => `http://${status.value.local_ip}:${status.value.port}`)
 const token = computed(() => status.value.token)
-const skillUrl = 'https://raw.githubusercontent.com/anthropics/screenclaw-skill/main'
+const skillInstallCmd = 'npx skills add GinSing1226/ScreenClaw'
 
 const openclawPrompt = computed(() => {
-  const skillInstallUrl = 'GinSing1226/ScreenClaw'
   return `${t('aiIntegrate.promptTitle')}
 
 # ${t('aiIntegrate.stepOne')}: ${t('aiIntegrate.stepOneTitle')}
 \`\`\`bash
-npx skills add ${skillInstallUrl}
+${skillInstallCmd}
 \`\`\`
 
 # ${t('aiIntegrate.stepTwo')}: ${t('aiIntegrate.stepTwoTitle')}
@@ -71,12 +70,11 @@ Start-Sleep -Seconds 20; openclaw gateway restart
 })
 
 const othersPrompt = computed(() => {
-  const skillInstallUrl = 'GinSing1226/ScreenClaw'
   return `${t('aiIntegrate.othersPromptTitle')}
 
 # ${t('aiIntegrate.othersStepOne')}: **${t('aiIntegrate.othersStepOneTitle')}**
 \`\`\`bash
-npx skills add ${skillInstallUrl}
+${skillInstallCmd}
 \`\`\`
 
 # ${t('aiIntegrate.othersStepTwo')}: **${t('aiIntegrate.othersStepTwoTitle')}**
