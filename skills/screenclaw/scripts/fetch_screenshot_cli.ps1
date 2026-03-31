@@ -142,10 +142,10 @@ if ($isLocal) {
 }
 else {
     # 远程场景：服务端只返回base64，客户端自己生成符合规则的路径
-    # 目录规则：{ai_app_type}__{session_id}__{window_id}__{yyyy-MM-dd}
+    # 目录规则：{ai_app_type}__{session_id}__{yyyy-MM-dd}
     # 文件规则：screenshot_{HHMMSS}_{rand4}.png
     $dateStr = Get-Date -Format "yyyy-MM-dd"
-    $dirName = "${AiAppType}__${SessionId}__${WindowId}__${dateStr}"
+    $dirName = "${AiAppType}__${SessionId}__${dateStr}"
 
     $timeStr = Get-Date -Format "HHmmss"
     $randChars = -join ((97..122) + (48..57) | Get-Random -Count 4 | ForEach-Object { [char]$_ })

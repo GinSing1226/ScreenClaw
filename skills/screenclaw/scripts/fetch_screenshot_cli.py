@@ -23,6 +23,10 @@ ScreenClaw 截图获取脚本（专用）
   number_color=<值>        - 数字颜色，默认#00FF00
   number_opacity=<值>      - 数字透明度(0-100)，默认100
 
+说明：
+  - 远程场景的截图保存目录规则：{ai_app_type}__{session_id}__{yyyy-MM-dd}/
+  - 同一会话的所有截图都保存在同一目录下，便于追踪
+
 降级路径：本脚本 → fetch_screenshot_cli.ps1 → fetch_screenshot_cli.sh
 """
 
@@ -54,7 +58,7 @@ def process_result(result, api_url, session_id=None, ai_app_type=None, window_id
         return data.get("image_path")
     else:
         # 远程场景：服务端只返回base64，客户端自己生成符合规则的路径
-        # 目录规则：{ai_app_type}__{session_id}__{window_id}__{yyyy-MM-dd}
+        # 目录规则：{ai_app_type}__{session_id}__{yyyy-MM-dd}
         # 文件规则：screenshot_{HHMMSS}_{rand4}.png
         image_base64 = data.get("image_base64")
         if not image_base64:
@@ -70,11 +74,9 @@ def process_result(result, api_url, session_id=None, ai_app_type=None, window_id
             session_id = "default"
         if ai_app_type is None:
             ai_app_type = "claude_code"
-        if window_id is None:
-            window_id = 0
 
         date_str = datetime.now().strftime("%Y-%m-%d")
-        dir_name = f"{ai_app_type}__{session_id}__{window_id}__{date_str}"
+        dir_name = f"{ai_app_type}__{session_id}__{date_str}"
 
         time_str = datetime.now().strftime("%H%M%S")
         rand_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))

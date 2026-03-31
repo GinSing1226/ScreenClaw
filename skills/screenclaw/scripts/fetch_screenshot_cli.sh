@@ -150,10 +150,9 @@ process_result() {
         # 从JSON中提取参数信息（如果有的话）
         local sess_id=$(jq -r '.data.session_id // "default"' "$json_file")
         local app_type=$(jq -r '.data.ai_app_type // "claude_code"' "$json_file")
-        local win_id=$(jq -r '.data.window_id // "0"' "$json_file")
 
         local date_str=$(date +"%Y-%m-%d")
-        local dir_name="${app_type}__${sess_id}__${win_id}__${date_str}"
+        local dir_name="${app_type}__${sess_id}__${date_str}"
 
         local time_str=$(date +"%H%M%S")
         local rand_str=$(cat /dev/urandom | tr -dc 'a-z0-9' | head -c 4)
