@@ -144,19 +144,17 @@ def generate_screenshot_filename() -> str:
 def generate_data_dir(
     base_dir: str,
     ai_app_type: str,
-    session_id: str,
-    window_id: str = ""
+    session_id: str
 ) -> str:
     """
     生成数据存储目录
 
-    格式: 项目根目录/data/ai_app_type__session_id[__window_id]__yyyy-mm-dd/
+    格式: 项目根目录/data/ai_app_type__session_id__yyyy-mm-dd/
 
     Args:
         base_dir: 基础目录名（如 "data"）
         ai_app_type: AI应用类型
         session_id: 会话ID
-        window_id: 窗口ID（可选）
 
     Returns:
         目录路径（绝对路径）
@@ -165,10 +163,7 @@ def generate_data_dir(
     project_data_dir = get_data_dir()
 
     date_str = datetime.now().strftime("%Y-%m-%d")
-    if window_id:
-        dir_name = f"{ai_app_type}__{session_id}__{window_id}__{date_str}"
-    else:
-        dir_name = f"{ai_app_type}__{session_id}__{date_str}"
+    dir_name = f"{ai_app_type}__{session_id}__{date_str}"
     dir_path = project_data_dir / dir_name
 
     if not dir_path.exists():

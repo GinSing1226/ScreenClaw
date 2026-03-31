@@ -95,7 +95,7 @@ class TestImageProcessing:
         )
 
         assert os.path.exists(data_dir)
-        assert "claude_code-session_001" in data_dir
+        assert "claude_code__session_001" in data_dir
 
         # 包含日期
         from datetime import datetime

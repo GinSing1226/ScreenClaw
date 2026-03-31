@@ -365,8 +365,8 @@ async def _execute_single_instruction(
                 max_width=config.screenshot.max_image_width
             )
 
-            # 保存图片（使用 window_id 组织目录）
-            data_dir = generate_data_dir("data", ai_app_type, session_id, str(window_id))
+            # 保存图片（使用 session_id 组织目录，不区分窗口）
+            data_dir = generate_data_dir("data", ai_app_type, session_id)
             filename = generate_screenshot_filename()
             image_path = os.path.join(data_dir, filename)
             save_image(image, image_path, config.screenshot.image_quality)
