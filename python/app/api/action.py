@@ -54,9 +54,9 @@ def _check_hijack_confirm(request, process_info, operation: str, detail: str) ->
         return None
 
     try:
-        window_title = win32gui.GetWindowText(request.window_id) or "未知窗口"
+        window_title = win32gui.GetWindowText(request.window_id) or "Unknown window"
     except Exception:
-        window_title = "未知窗口"
+        window_title = "Unknown window"
     from app.services.confirm_service import ConfirmService
     confirm_result = ConfirmService.request_confirm(
         ai_app_type=request.ai_app_type,
@@ -66,9 +66,9 @@ def _check_hijack_confirm(request, process_info, operation: str, detail: str) ->
         operation_detail=detail
     )
 
-    print(f"[ConfirmCheck] → 确认结果: confirmed={confirm_result.confirmed}")
+    print(f"[ConfirmCheck] → Confirmed: {confirm_result.confirmed}")
     if not confirm_result.confirmed:
-        return create_error_response("USER_DENIED", "用户拒绝操作")
+        return create_error_response("USER_DENIED", "User denied the operation")
     return None
 
 
@@ -81,7 +81,7 @@ async def click(request: ClickRequest, req: Request = None, authorization: str =
 
     # hijack 模式需要用户确认
     confirm_error = _check_hijack_confirm(
-        request, request.process_info, "点击", f"坐标: ({request.x}, {request.y})"
+        request, request.process_info, "Click", f"Coordinates: ({request.x}, {request.y})"
     )
     if confirm_error:
         return confirm_error
@@ -89,7 +89,7 @@ async def click(request: ClickRequest, req: Request = None, authorization: str =
     # 计算坐标
     coords = _calc_coords(request.window_id, request.x, request.y, request.main_window_id)
     if not coords:
-        return create_error_response("INTERNAL_ERROR", "无法获取窗口矩形")
+        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
     physical_x, physical_y, virtual_x, virtual_y = coords
 
     # 调试日志：坐标计算
@@ -125,8 +125,8 @@ async def long_press(request: LongPressRequest, authorization: str = Header(None
 
     # hijack 模式需要用户确认
     confirm_error = _check_hijack_confirm(
-        request, process_info, "长按",
-        f"坐标: ({request.x}, {request.y}), 时长: {request.duration_ms}ms"
+        request, process_info, "Long press",
+        f"Coordinates: ({request.x}, {request.y}), Duration: {request.duration_ms}ms"
     )
     if confirm_error:
         return confirm_error
@@ -134,7 +134,7 @@ async def long_press(request: LongPressRequest, authorization: str = Header(None
     # 计算坐标
     coords = _calc_coords(request.window_id, request.x, request.y, request.main_window_id)
     if not coords:
-        return create_error_response("INTERNAL_ERROR", "无法获取窗口矩形")
+        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
     physical_x, physical_y, virtual_x, virtual_y = coords
 
     # 执行长按
@@ -179,7 +179,7 @@ async def swipe(request: SwipeRequest, authorization: str = Header(None)):
 
     # hijack 模式需要用户确认
     confirm_error = _check_hijack_confirm(
-        request, process_info, "滑动",
+        request, process_info, "Swipe",
         f"({request.start_x}, {request.start_y}) → ({request.end_x}, {request.end_y})"
     )
     if confirm_error:
@@ -188,13 +188,13 @@ async def swipe(request: SwipeRequest, authorization: str = Header(None)):
     # 计算起点坐标
     start_coords = _calc_coords(request.window_id, request.start_x, request.start_y, request.main_window_id)
     if not start_coords:
-        return create_error_response("INTERNAL_ERROR", "无法获取窗口矩形")
+        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
     physical_start_x, physical_start_y, virtual_start_x, virtual_start_y = start_coords
 
     # 计算终点坐标
     end_coords = _calc_coords(request.window_id, request.end_x, request.end_y, request.main_window_id)
     if not end_coords:
-        return create_error_response("INTERNAL_ERROR", "无法获取窗口矩形")
+        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
     physical_end_x, physical_end_y, virtual_end_x, virtual_end_y = end_coords
 
     inject_result = windows_input.swipe(
@@ -241,7 +241,7 @@ async def scroll(request: ScrollRequest, authorization: str = Header(None)):
 
     # hijack 模式需要用户确认
     confirm_error = _check_hijack_confirm(
-        request, process_info, "滚动", f"滚动量: {request.delta}"
+        request, process_info, "Scroll", f"Delta: {request.delta}"
     )
     if confirm_error:
         return confirm_error
@@ -249,7 +249,7 @@ async def scroll(request: ScrollRequest, authorization: str = Header(None)):
     # 计算坐标
     coords = _calc_coords(request.window_id, request.x, request.y, request.main_window_id)
     if not coords:
-        return create_error_response("INTERNAL_ERROR", "无法获取窗口矩形")
+        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
     physical_x, physical_y, virtual_x, virtual_y = coords
 
     inject_result = windows_input.scroll(
@@ -293,8 +293,8 @@ async def hover(request: HoverRequest, authorization: str = Header(None)):
 
     # hijack 模式需要用户确认
     confirm_error = _check_hijack_confirm(
-        request, process_info, "鼠标悬浮",
-        f"坐标: ({request.x}, {request.y}), 停留: {request.duration_ms}ms"
+        request, process_info, "Hover",
+        f"Coordinates: ({request.x}, {request.y}), Duration: {request.duration_ms}ms"
     )
     if confirm_error:
         return confirm_error
@@ -302,7 +302,7 @@ async def hover(request: HoverRequest, authorization: str = Header(None)):
     # 计算坐标
     coords = _calc_coords(request.window_id, request.x, request.y, request.main_window_id)
     if not coords:
-        return create_error_response("INTERNAL_ERROR", "无法获取窗口矩形")
+        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
     physical_x, physical_y, virtual_x, virtual_y = coords
 
     inject_result = windows_input.hover(
@@ -346,7 +346,7 @@ async def right_click(request: RightClickRequest, authorization: str = Header(No
 
     # hijack 模式需要用户确认
     confirm_error = _check_hijack_confirm(
-        request, process_info, "右键点击", f"坐标: ({request.x}, {request.y})"
+        request, process_info, "Right-click", f"Coordinates: ({request.x}, {request.y})"
     )
     if confirm_error:
         return confirm_error
@@ -354,7 +354,7 @@ async def right_click(request: RightClickRequest, authorization: str = Header(No
     # 计算坐标
     coords = _calc_coords(request.window_id, request.x, request.y, request.main_window_id)
     if not coords:
-        return create_error_response("INTERNAL_ERROR", "无法获取窗口矩形")
+        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
     physical_x, physical_y, virtual_x, virtual_y = coords
 
     inject_result = windows_input.right_click(

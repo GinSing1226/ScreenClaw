@@ -78,12 +78,15 @@ def main():
     # 解析参数
     params = parse_params(param_args)
 
-    # 强制检查：ai_app_type 和 session_id 必须由客户端显式传入
+    # 强制检查：ai_app_type、session_id、main_window_id 必须由客户端显式传入
     if 'ai_app_type' not in params:
         print("错误：ai_app_type 参数必须显式传入。例如：ai_app_type=claude_code")
         sys.exit(1)
     if 'session_id' not in params:
         print("错误：session_id 参数必须显式传入。格式：app_name_YYYYMMDD_HHMMSS")
+        sys.exit(1)
+    if 'main_window_id' not in params:
+        print("错误：main_window_id 参数必须显式传入。从get_window_list获取")
         sys.exit(1)
 
     # 构建body

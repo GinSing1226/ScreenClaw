@@ -39,7 +39,7 @@ Content-Type: application/json
 | `ai_app_type` | string | 是 | - | AI应用类型（如claude_code） |
 | `session_id` | string | 是 | - | 会话唯一标识，整个会话保持一致 |
 | `window_id` | int | 是 | - | 目标窗口句柄，从get_window_list获取 |
-| `main_window_id` | int | 建议 | - | 主窗口ID（用于激活最小化窗口）， 从get_window_list获取 |
+| `main_window_id` | int | 是 | - | 主窗口ID（用于激活最小化窗口）， 从get_window_list获取 |
 | `x` | float | 是 | - | 横坐标（从截图的网格标记中直接读出的数字，如50表示中间位置） |
 | `y` | float | 是 | - | 纵坐标（从截图的网格标记中直接读出的数字，如30表示偏上位置） |
 | `action_method` | string | 否 | "background" | 操作方式：background/hijack |
@@ -61,6 +61,7 @@ Content-Type: application/json
   "ai_app_type": "claude_code",
   "session_id": "session-123",
   "window_id": 1001,
+  "main_window_id": 1001,
   "x": 50.0,
   "y": 30.0,
   "action_method": "background"
@@ -73,6 +74,7 @@ Content-Type: application/json
   "ai_app_type": "claude_code",
   "session_id": "session-123",
   "window_id": 1001,
+  "main_window_id": 1001,
   "x": 50.0,
   "y": 30.0,
   "action_method": "hijack"
@@ -93,8 +95,10 @@ Content-Type: application/json
 
 ## 使用技巧
 
-1. **优先使用background**：无感操作，不干扰用户
-2. **background无效时**：改用hijack模式
-3. **点击后验证**：截图确认点击是否生效
-4. **子窗口问题**：点击无效时，尝试使用子窗口的window_id
-5. **输入文本**：输入文本请查阅`input_text.md`api文档，Input_text自带点击后输入。不建议分步点击+输入。
+### 遇到问题时的排查顺序
+1. **API成功但效果与预期不同**（如点了但没反应）→ 查阅 SKILL.md 的「常见问题排查」章节
+2. **API调用失败**（返回错误码）→ 对照本文档的请求参数，检查参数格式
+
+### 操作技巧
+- **子窗口问题**：点击无效时，尝试使用子窗口的window_id
+- **输入文本**：输入文本请查阅`input_text.md`api文档，Input_text自带点击后输入。不建议分步点击+输入。

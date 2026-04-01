@@ -77,21 +77,21 @@ async def input_text(request: InputTextRequest, req: Request = None, authorizati
     # hijack 模式需要用户确认
     if request.action_method == "hijack":
         try:
-            window_title = win32gui.GetWindowText(request.window_id) or "未知窗口"
+            window_title = win32gui.GetWindowText(request.window_id) or "Unknown window"
         except Exception:
-            window_title = "未知窗口"
+            window_title = "Unknown window"
 
         from app.services.confirm_service import ConfirmService
         confirm_result = ConfirmService.request_confirm(
             ai_app_type=request.ai_app_type,
             window_title=window_title,
             process_name=process_info.process_name,
-            operation="输入文本",
-            operation_detail=f"输入：{decoded_text[:50]}{'...' if len(decoded_text) > 50 else ''}"
+            operation="Input text",
+            operation_detail=f"Text: {decoded_text[:50]}{'...' if len(decoded_text) > 50 else ''}"
         )
 
         if not confirm_result.confirmed:
-            return create_error_response("USER_DENIED", "用户拒绝操作")
+            return create_error_response("USER_DENIED", "User denied the operation")
 
     # 坐标计算（如果传了坐标）- 包含窗口恢复逻辑
     physical_x = None
@@ -169,21 +169,21 @@ async def press_key(request: PressKeyRequest, req: Request = None, authorization
     # hijack 模式需要用户确认
     if request.action_method == "hijack":
         try:
-            window_title = win32gui.GetWindowText(request.window_id) or "未知窗口"
+            window_title = win32gui.GetWindowText(request.window_id) or "Unknown window"
         except Exception:
-            window_title = "未知窗口"
+            window_title = "Unknown window"
 
         from app.services.confirm_service import ConfirmService
         confirm_result = ConfirmService.request_confirm(
             ai_app_type=request.ai_app_type,
             window_title=window_title,
             process_name=process_info.process_name,
-            operation="按键",
-            operation_detail=f"按键：{request.key}"
+            operation="Press key",
+            operation_detail=f"Key: {request.key}"
         )
 
         if not confirm_result.confirmed:
-            return create_error_response("USER_DENIED", "用户拒绝操作")
+            return create_error_response("USER_DENIED", "User denied the operation")
 
     # 可选的坐标计算（如果传了 x, y）- 包含窗口恢复逻辑
     physical_x = None

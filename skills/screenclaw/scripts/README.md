@@ -20,13 +20,13 @@ AI无需手动组装curl命令，只需传递参数即可。脚本会自动：
 
 ```bash
 # Python版本（推荐）
-python scripts/api_call.py <api_url> <token> <endpoint> ai_app_type=<值> session_id=<值> [其他参数...]
+python scripts/api_call.py <api_url> <token> <endpoint> ai_app_type=<值> session_id=<值> main_window_id=<值> [其他参数...]
 
 # PowerShell版本
-powershell -ExecutionPolicy Bypass -File scripts/api_call.ps1 <api_url> <token> <endpoint> ai_app_type=<值> session_id=<值> [其他参数...]
+powershell -ExecutionPolicy Bypass -File scripts/api_call.ps1 <api_url> <token> <endpoint> ai_app_type=<值> session_id=<值> main_window_id=<值> [其他参数...]
 
 # Shell版本
-bash scripts/api_call.sh <api_url> <token> <endpoint> ai_app_type=<值> session_id=<值> [其他参数...]
+bash scripts/api_call.sh <api_url> <token> <endpoint> ai_app_type=<值> session_id=<值> main_window_id=<值> [其他参数...]
 ```
 
 ### 示例
@@ -36,10 +36,10 @@ bash scripts/api_call.sh <api_url> <token> <endpoint> ai_app_type=<值> session_
 python scripts/api_call.py http://192.168.10.190:12261 TOKEN get_window_list ai_app_type=claude_code session_id=wechat_20260330_143025 keyword=飞书
 
 # 点击
-python scripts/api_call.py http://192.168.10.190:12261 TOKEN click ai_app_type=claude_code session_id=wechat_20260330_143025 window_id=123456 x=50 y=35
+python scripts/api_call.py http://192.168.10.190:12261 TOKEN click ai_app_type=claude_code session_id=wechat_20260330_143025 main_window_id=123456 window_id=123456 x=50 y=35
 
 # 输入文本
-python scripts/api_call.py http://192.168.10.190:12261 TOKEN input_text ai_app_type=claude_code session_id=wechat_20260330_143025 window_id=123456 text=你好世界
+python scripts/api_call.py http://192.168.10.190:12261 TOKEN input_text ai_app_type=claude_code session_id=wechat_20260330_143025 main_window_id=123456 window_id=123456 text=你好世界
 ```
 
 > **注意**：截图API请使用 `fetch_screenshot_cli.py` 专用脚本
@@ -53,9 +53,10 @@ python scripts/api_call.py http://192.168.10.190:12261 TOKEN input_text ai_app_t
 | endpoint | API端点名称 | `get_window_list`, `click` 等 |
 | ai_app_type | **AI应用类型（必需）** | `claude_code`, `kimi_code` 等 |
 | session_id | **会话ID（必需）** | `wechat_20260330_143025` |
+| main_window_id | **主窗口ID（必需）** | `123456`，从get_window_list获取 |
 | 参数... | API参数（key=value格式） | `keyword=飞书`, `x=50`, `y=35` |
 
-> ⚠️ **重要**：`ai_app_type` 和 `session_id` 是**必需参数**，必须由客户端显式传入，脚本不会自动生成。整个会话期间必须使用同一个session_id。
+> ⚠️ **重要**：`ai_app_type`、`session_id`、`main_window_id` 是**必需参数**，必须由客户端显式传入，脚本不会自动生成。整个会话期间必须使用同一个session_id。
 
 
 
@@ -68,13 +69,13 @@ python scripts/api_call.py http://192.168.10.190:12261 TOKEN input_text ai_app_t
 **用法**：
 ```bash
 # Python版本
-python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> <session_id> <ai_app_type> [网格和数字参数...]
+python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> <session_id> <ai_app_type> <main_window_id> [网格和数字参数...]
 
 # PowerShell版本
-powershell -ExecutionPolicy Bypass -File scripts/fetch_screenshot_cli.ps1 <api_url> <token> <window_id> <session_id> <ai_app_type> [网格和数字参数...]
+powershell -ExecutionPolicy Bypass -File scripts/fetch_screenshot_cli.ps1 <api_url> <token> <window_id> <session_id> <ai_app_type> <main_window_id> [网格和数字参数...]
 
 # Shell版本
-bash scripts/fetch_screenshot_cli.sh <api_url> <token> <window_id> <session_id> <ai_app_type> [网格和数字参数...]
+bash scripts/fetch_screenshot_cli.sh <api_url> <token> <window_id> <session_id> <ai_app_type> <main_window_id> [网格和数字参数...]
 ```
 
 **基础参数**：
@@ -83,11 +84,12 @@ bash scripts/fetch_screenshot_cli.sh <api_url> <token> <window_id> <session_id> 
 - `window_id`：窗口ID
 - `session_id`：**必需参数**，会话标识符
 - `ai_app_type`：**必需参数**，AI应用类型
+- `main_window_id`：**必需参数**，主窗口ID，从get_window_list获取
 
 **网格参数（可选）**：
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
-| grid_density | 网格密度 | 5.0 |
+| grid_density | 每格宽度（像素），值越小网格越密 | 5.0 |
 | grid_opacity | 网格透明度(0-100) | 50 |
 | grid_color | 网格颜色 | #00FF00 |
 
@@ -103,13 +105,13 @@ bash scripts/fetch_screenshot_cli.sh <api_url> <token> <window_id> <session_id> 
 **示例**：
 ```bash
 # 基础用法（使用默认网格和数字参数）
-python scripts/fetch_screenshot_cli.py http://192.168.10.190:12261 TOKEN 1380176 my_session claude_code
+python scripts/fetch_screenshot_cli.py http://192.168.10.190:12261 TOKEN 1380176 my_session claude_code 1380176
 
 # 自定义网格密度和数字大小
-python scripts/fetch_screenshot_cli.py http://192.168.10.190:12261 TOKEN 1380176 my_session claude_code grid_density=8 number_size=14
+python scripts/fetch_screenshot_cli.py http://192.168.10.190:12261 TOKEN 1380176 my_session claude_code 1380176 grid_density=8 number_size=14
 
 # 完整自定义
-python scripts/fetch_screenshot_cli.py http://192.168.10.190:12261 TOKEN 1380176 my_session claude_code grid_density=8 grid_opacity=30 grid_color="#00FF00" number_size=14 number_color="#FF0000"
+python scripts/fetch_screenshot_cli.py http://192.168.10.190:12261 TOKEN 1380176 my_session claude_code 1380176 grid_density=8 grid_opacity=30 grid_color="#00FF00" number_size=14 number_color="#FF0000"
 ```
 
 **功能**：
@@ -136,6 +138,6 @@ python scripts/fetch_screenshot_cli.py http://192.168.10.190:12261 TOKEN 1380176
 
 1. **优先使用api_call脚本**：无需组装curl，直接传参数
 2. **传递中文即可**：脚本会自动转换为Unicode编码
-3. **ai_app_type 和 session_id 必须显式传入**：每次API调用都必须包含这两个参数
+3. **ai_app_type、session_id、main_window_id 必须显式传入**：每次API调用都必须包含这三个参数
 4. **session_id保持一致**：整个会话使用同一个session_id
 5. **降级路径**：api_call失败时尝试其他版本或手动curl

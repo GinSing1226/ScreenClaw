@@ -34,7 +34,7 @@ description: 触摸式滑动（翻页、切换标签、拖拽）
 | `ai_app_type` | string | 是 | - | AI应用类型 | 判断当前AI是什么应用，就用什么值 |
 | `session_id` | string | 是 | - | 会话唯一标识 | 获取当前会话唯一标识，获取不到则随机生成 |
 | `window_id` | int | 是 | - | 目标窗口句柄（建议优先使用子窗口而非主窗口） | 从get_window_list获取 |
-| `main_window_id` | int | 建议 | - | 主窗口ID（用于恢复窗口） | 从get_window_list获取 |
+| `main_window_id` | int | 是 | - | 主窗口ID（用于恢复窗口） | 从get_window_list获取 |
 | `start_x` | float | 是 | - | 起始横坐标（从截图的网格标记中直接读出的数字） | 从截图分析得出 |
 | `start_y` | float | 是 | - | 起始纵坐标（从截图的网格标记中直接读出的数字） | 从截图分析得出 |
 | `end_x` | float | 是 | - | 结束横坐标（从截图的网格标记中直接读出的数字） | 从截图分析得出 |
@@ -49,6 +49,7 @@ description: 触摸式滑动（翻页、切换标签、拖拽）
   "ai_app_type": "claude_code",
   "session_id": "session-123",
   "window_id": 1001,
+  "main_window_id": 1001,
   "start_x": 50.0,
   "start_y": 80.0,
   "end_x": 50.0,
@@ -63,6 +64,7 @@ description: 触摸式滑动（翻页、切换标签、拖拽）
   "ai_app_type": "claude_code",
   "session_id": "session-123",
   "window_id": 1001,
+  "main_window_id": 1001,
   "start_x": 20.0,
   "start_y": 50.0,
   "end_x": 80.0,
@@ -82,6 +84,14 @@ description: 触摸式滑动（翻页、切换标签、拖拽）
   "message": "指令已发送，可截图验证结果"
 }
 ```
+
+---
+
+## 使用技巧
+
+### 遇到问题时的排查顺序
+1. **API成功但效果与预期不同**（如滑了但位置不对）→ 查阅 SKILL.md 的「常见问题排查」章节
+2. **API调用失败**（返回错误码）→ 对照本文档的请求参数检查参数格式
 
 ---
 

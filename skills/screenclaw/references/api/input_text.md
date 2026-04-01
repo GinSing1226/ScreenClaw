@@ -38,6 +38,7 @@ Content-Type: application/json
 | `ai_app_type` | string | 是 | - | AI应用类型（如claude_code） |
 | `session_id` | string | 是 | - | 会话唯一标识，整个会话保持一致 |
 | `window_id` | int | 是 | - | 目标窗口句柄，从get_window_list获取 |
+| `main_window_id` | int | 是 | - | 主窗口ID（用于激活最小化窗口），从get_window_list获取 |
 | `x` | float | 否 | - | 输入位置横坐标（从截图的网格标记中直接读出的数字），推荐填写，无感操作时可实现先点击再输入 |
 | `y` | float | 否 | - | 输入位置纵坐标（从截图的网格标记中直接读出的数字），推荐填写，无感操作时可实现先点击再输入 |
 | `text` | string | 是 | - | 输入文本，\n表示换行 |
@@ -61,6 +62,7 @@ Content-Type: application/json
   "ai_app_type": "claude_code",
   "session_id": "session-123",
   "window_id": 1001,
+  "main_window_id": 1001,
   "x": 50.0,
   "y": 50.0,
   "text": "Hello World",
@@ -74,6 +76,7 @@ Content-Type: application/json
   "ai_app_type": "claude_code",
   "session_id": "session-123",
   "window_id": 1001,
+  "main_window_id": 1001,
   "x": 50.0,
   "y": 50.0,
   "text": "你好，这是中文内容",
@@ -108,6 +111,7 @@ Content-Type: application/json
   "ai_app_type": "claude_code",
   "session_id": "my_session",
   "window_id": 1001,
+  "main_window_id": 1001,
   "text": "\u4f60\u597d\uff0c\u8fd9\u662f\u4e2d\u6587\u5185\u5bb9",
   "action_method": "background"
 }
@@ -164,6 +168,11 @@ curl -X POST \
 
 ## 使用技巧
 
+### 遇到问题时的排查顺序
+1. **API成功但效果与预期不同**（如输入了但没显示）→ 查阅 SKILL.md 的「常见问题排查」章节
+2. **API调用失败**（返回错误码）→ 对照本文档的请求参数检查参数格式
+
+### 操作技巧
 1. **子窗口**：输入框通常是子窗口，使用子窗口的window_id
 2. **点击激活**：传x和y参数，先点击输入框激活焦点
 3. **换行**：使用 `\n` 表示换行
@@ -173,7 +182,7 @@ curl -X POST \
 
 ## 无法粘贴的替代方案
 
-某些输入框不支持粘贴（如安全输入框），可用**批处理+按键逐个字符键入**：
+某些输入框不支持粘贴（如安全输入框），可用**批处理+按键逐个字符键入**。：
 
 ```json
 {
@@ -194,3 +203,4 @@ curl -X POST \
 **注意**：
 - 字符间添加短暂wait（如50ms），避免按键过快丢失
 - 大写字母需配合shift键
+- 中文输入，必须使用组合指令，因为中文输入法有候选出字过程，需要配合空格录入（指令结束后，输入法候选框会消失，因为状态被复原）

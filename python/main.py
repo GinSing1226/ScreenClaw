@@ -5,6 +5,13 @@ ScreenClaw Python Backend
 import os
 import sys
 
+# 修复 PyInstaller console=False 时 sys.stderr/stdout 为 None 的问题
+# 必须在所有 import 之前执行
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, 'w')
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, 'w')
+
 # 添加项目根目录到 Python 路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -126,6 +133,13 @@ def find_available_port(start_port: int, max_attempts: int = 100) -> int:
 
 def main():
     """主函数"""
+    # 修复 PyInstaller console=False 时 sys.stderr 为 None 的问题
+    import sys
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, 'w')
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, 'w')
+
     # 更新本机 IP
     config_service.update_local_ip()
 
@@ -147,12 +161,15 @@ def main():
     print(f"  Token:   {token_display}")
     print(f"{'='*50}\n")
 
-    # 启动服务
+    # 启动服务（单进程模式，避免产生多个进程）
     uvicorn.run(
         app,
         host=config.server.host,
         port=port,
-        log_level="info"
+        log_level="info",
+        workers=1,  # 强制单 worker
+        access_log=False,  # 禁用访问日志减少开销
+        reload=False  # 禁用热重载避免进程倍增
     )
 
 

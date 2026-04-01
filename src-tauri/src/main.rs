@@ -214,6 +214,17 @@ fn main() {
                             }
                         }
                         "quit" => {
+                            // 退出前先停止 Python 服务
+                            println!("[TRAY] Quit menu clicked, stopping Python service...");
+                            let state = app.state::<Arc<AppState>>();
+                            // spawn 任务来异步停止服务
+                            let state_clone = state.inner().clone();
+                            std::thread::spawn(move || {
+                                tauri::async_runtime::block_on(async {
+                                    commands::stop_python_service(state_clone).await;
+                                });
+                            });
+                            println!("[TRAY] Exit command sent...");
                             app.exit(0);
                         }
                         _ => {}
@@ -254,24 +265,32 @@ fn main() {
             commands::confirm_operation,
             commands::regenerate_token,
             commands::get_logs,
+            commands::open_devtools,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
 /// 获取项目根目录
-fn get_project_root() -> std::path::PathBuf {
-    let exe_dir = std::env::current_exe()
-        .expect("Failed to get current exe path")
+/// - 打包环境：返回 exe 所在目录（用户会随意放置 exe）
+/// - 开发环境：向上3级找到项目根目录（exe 在 src-tauri/target/debug/）
+pub fn get_project_root() -> std::path::PathBuf {
+    let exe_path = std::env::current_exe()
+        .expect("Failed to get current exe path");
+
+    let exe_dir = exe_path
         .parent()
         .expect("Failed to get parent directory")
         .to_path_buf();
 
-    // 开发模式：exe在 src-tauri/target/debug/
-    // exe_dir = src-tauri/target/debug/
-    // parent() = src-tauri/target/
-    // parent() = src-tauri/
-    // parent() = 项目根目录
+    // 检查 exe 同级目录是否有 data/config.json（打包环境）
+    let data_in_exe_dir = exe_dir.join("data").join("config.json");
+    if data_in_exe_dir.exists() {
+        return exe_dir;
+    }
+
+    // 开发环境：向上3级
+    // exe 在 src-tauri/target/debug/ 或 src-tauri/target/release/
     exe_dir.parent()
         .and_then(|p| p.parent())
         .and_then(|p| p.parent())
@@ -280,12 +299,12 @@ fn get_project_root() -> std::path::PathBuf {
 }
 
 /// 获取data目录路径
-fn get_data_dir() -> std::path::PathBuf {
+pub fn get_data_dir() -> std::path::PathBuf {
     get_project_root().join("data")
 }
 
 /// 获取config.json路径
-fn get_config_path() -> std::path::PathBuf {
+pub fn get_config_path() -> std::path::PathBuf {
     get_data_dir().join("config.json")
 }
 

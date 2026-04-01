@@ -33,7 +33,7 @@ description: 打开上下文菜单、调用特定功能的快捷方式
 | `ai_app_type` | string | 是 | - | AI应用类型 | 判断当前AI是什么应用，就用什么值 |
 | `session_id` | string | 是 | - | 会话唯一标识 | 获取当前会话唯一标识，获取不到则随机生成 |
 | `window_id` | int | 是 | - | 目标窗口句柄 | 从get_window_list获取 |
-| `main_window_id` | int | 建议 | - | 主窗口ID（用于激活最小化窗口） | 从get_window_list获取 |
+| `main_window_id` | int | 是 | - | 主窗口ID（用于激活最小化窗口） | 从get_window_list获取 |
 | `x` | float | 是 | - | 横坐标（从截图的网格标记中直接读出的数字） | 从截图分析得出 |
 | `y` | float | 是 | - | 纵坐标（从截图的网格标记中直接读出的数字） | 从截图分析得出 |
 | `action_method` | string | 否 | "background" | 操作方式：background/hijack | 优先background |
@@ -45,6 +45,7 @@ description: 打开上下文菜单、调用特定功能的快捷方式
   "ai_app_type": "claude_code",
   "session_id": "session-123",
   "window_id": 1001,
+  "main_window_id": 1001,
   "x": 50.0,
   "y": 50.0,
   "action_method": "background"
@@ -76,6 +77,11 @@ description: 打开上下文菜单、调用特定功能的快捷方式
 
 ## 使用技巧
 
+### 遇到问题时的排查顺序
+1. **API成功但效果与预期不同**（如右键了但菜单没出来）→ 查阅 SKILL.md 的「常见问题排查」章节
+2. **API调用失败**（返回错误码）→ 对照本文档的请求参数检查参数格式
+
+### 操作技巧
 1. **右键菜单操作**：右键点击后，截图查看菜单，然后点击菜单项
 2. **快捷操作**：某些功能的快捷方式在右键菜单中
 3. **子窗口**：右键菜单可能在子窗口中，注意选择正确的window_id

@@ -2,6 +2,24 @@ import { createApp } from 'vue'
 import { createI18n } from 'vue-i18n'
 import App from './App.vue'
 import './style.css'
+import { invoke } from '@tauri-apps/api/core'
+
+// 全局快捷键：F12 打开开发者工具
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'F12') {
+    e.preventDefault()
+    invoke('open_devtools').catch(err => {
+      console.error('Failed to open devtools:', err)
+    })
+  }
+  // Ctrl+Shift+I 也打开开发者工具
+  if (e.ctrlKey && e.shiftKey && e.key === 'I') {
+    e.preventDefault()
+    invoke('open_devtools').catch(err => {
+      console.error('Failed to open devtools:', err)
+    })
+  }
+})
 
 // 国际化配置
 const i18n = createI18n({

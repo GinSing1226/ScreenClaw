@@ -36,7 +36,7 @@ description: 触发快捷键功能（Ctrl+C复制）、发送特殊按键（Ente
 | `ai_app_type` | string | 是 | - | AI应用类型 | 判断当前AI是什么应用，就用什么值 |
 | `session_id` | string | 是 | - | 会话唯一标识 | 获取当前会话唯一标识，获取不到则随机生成 |
 | `window_id` | int | 是 | - | 目标窗口句柄 | 从get_window_list获取 |
-| `main_window_id` | int | 建议 | - | 主窗口ID（用于激活最小化窗口） | 从get_window_list获取 |
+| `main_window_id` | int | 是 | - | 主窗口ID（用于激活最小化窗口） | 从get_window_list获取 |
 | `key` | string | 是 | - | 按键，空格分隔组合键 | 根据需要设置 |
 | `x` | float | 否 | - | 先点击此横坐标再按键 | 从截图分析得出 |
 | `y` | float | 否 | - | 先点击此纵坐标再按键 | 从截图分析得出 |
@@ -59,6 +59,7 @@ description: 触发快捷键功能（Ctrl+C复制）、发送特殊按键（Ente
   "ai_app_type": "claude_code",
   "session_id": "session-123",
   "window_id": 1001,
+  "main_window_id": 1001,
   "key": "ctrl c",
   "action_method": "hijack"
 }
@@ -70,6 +71,7 @@ description: 触发快捷键功能（Ctrl+C复制）、发送特殊按键（Ente
   "ai_app_type": "claude_code",
   "session_id": "session-123",
   "window_id": 1001,
+  "main_window_id": 1001,
   "key": "ctrl v",
   "action_method": "hijack"
 }
@@ -81,6 +83,7 @@ description: 触发快捷键功能（Ctrl+C复制）、发送特殊按键（Ente
   "ai_app_type": "claude_code",
   "session_id": "session-123",
   "window_id": 1001,
+  "main_window_id": 1001,
   "key": "ctrl s",
   "action_method": "hijack"
 }
@@ -92,6 +95,7 @@ description: 触发快捷键功能（Ctrl+C复制）、发送特殊按键（Ente
   "ai_app_type": "claude_code",
   "session_id": "session-123",
   "window_id": 1001,
+  "main_window_id": 1001,
   "key": "enter",
   "action_method": "hijack"
 }
@@ -103,6 +107,7 @@ description: 触发快捷键功能（Ctrl+C复制）、发送特殊按键（Ente
   "ai_app_type": "claude_code",
   "session_id": "session-123",
   "window_id": 1001,
+  "main_window_id": 1001,
   "x": 50.0,
   "y": 50.0,
   "key": "ctrl a",
@@ -163,6 +168,11 @@ description: 触发快捷键功能（Ctrl+C复制）、发送特殊按键（Ente
 
 ## 使用技巧
 
+### 遇到问题时的排查顺序
+1. **API成功但效果与预期不同**（如按了但没反应）→ 查阅 SKILL.md 的「常见问题排查」章节
+2. **API调用失败**（返回错误码）→ 对照本文档的请求参数检查参数格式
+
+### 操作技巧
 1. **子窗口**：按键事件需要发送到具体的接收窗口，使用子窗口的window_id
 2. **点击激活**：传x和y参数，先点击位置确保焦点正确
 3. **确认弹窗**：每次执行都会弹出确认窗口，需用户确认

@@ -41,6 +41,7 @@ URL="${API_URL%/}/api/${ENDPOINT}"
 PARAMS=()
 HAS_AI_APP_TYPE=false
 HAS_SESSION_ID=false
+HAS_MAIN_WINDOW_ID=false
 for arg in "$@"; do
     if [[ "$arg" =~ ^(.+?)=(.+)$ ]]; then
         key="${BASH_REMATCH[1]}"
@@ -53,6 +54,9 @@ for arg in "$@"; do
         fi
         if [[ "$key" == "session_id" ]]; then
             HAS_SESSION_ID=true
+        fi
+        if [[ "$key" == "main_window_id" ]]; then
+            HAS_MAIN_WINDOW_ID=true
         fi
 
         # 类型转换
@@ -71,13 +75,17 @@ for arg in "$@"; do
     fi
 done
 
-# 强制检查：ai_app_type 和 session_id 必须由客户端显式传入
+# 强制检查：ai_app_type、session_id、main_window_id 必须由客户端显式传入
 if [[ "$HAS_AI_APP_TYPE" == "false" ]]; then
     echo "错误：ai_app_type 参数必须显式传入。例如：ai_app_type=claude_code"
     exit 1
 fi
 if [[ "$HAS_SESSION_ID" == "false" ]]; then
     echo "错误：session_id 参数必须显式传入。格式：app_name_YYYYMMDD_HHMMSS"
+    exit 1
+fi
+if [[ "$HAS_MAIN_WINDOW_ID" == "false" ]]; then
+    echo "错误：main_window_id 参数必须显式传入。从get_window_list获取"
     exit 1
 fi
 

@@ -14,13 +14,21 @@ from PIL import Image
 
 
 def get_project_root() -> Path:
-    """获取项目根目录"""
-    # 获取当前exe或脚本所在目录，然后向上一级找到项目根目录
+    """获取项目根目录
+
+    便携包环境：exe 和 data/ 同级，返回 exe 所在目录
+    开发环境：向上3级找到项目根目录
+    """
     if getattr(sys, 'frozen', False):
         # 打包后的exe
         exe_dir = Path(sys.executable).parent
-        # exe在 src-tauri/target/debug/ 或 release/ 目录下
-        # 项目根目录是 exe 的父目录的父目录的父目录
+
+        # 检查 exe 同级目录是否有 data/config.json（便携包环境）
+        data_in_exe_dir = exe_dir / "data" / "config.json"
+        if data_in_exe_dir.exists():
+            return exe_dir
+
+        # 开发环境：向上3级
         return exe_dir.parent.parent.parent
     else:
         # 开发模式：python/main.py 所在目录的父目录

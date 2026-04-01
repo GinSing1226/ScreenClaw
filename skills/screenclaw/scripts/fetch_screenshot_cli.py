@@ -2,17 +2,18 @@
 """
 ScreenClaw 截图获取脚本（专用）
 
-用法：python fetch_screenshot_cli.py <api_url> <token> <window_id> <session_id> <ai_app_type> [参数...]
+用法：python fetch_screenshot_cli.py <api_url> <token> <window_id> <session_id> <ai_app_type> <main_window_id> [参数...]
 
 参数说明：
-  api_url     - ScreenClaw服务地址
-  token       - 认证令牌
-  window_id   - 窗口ID
-  session_id  - 会话ID（必需）
-  ai_app_type - AI应用类型（必需）
+  api_url        - ScreenClaw服务地址
+  token          - 认证令牌
+  window_id      - 窗口ID
+  session_id     - 会话ID（必需）
+  ai_app_type    - AI应用类型（必需）
+  main_window_id - 主窗口ID（必需，从get_window_list获取）
 
 网格参数（可选）：
-  grid_density=<值>      - 网格密度，默认5.0
+  grid_density=<值>      - 每格宽度（像素），值越小网格越密，默认5.0
   grid_opacity=<值>       - 网格透明度(0-100)，默认50
   grid_color=<值>         - 网格颜色，默认#00FF00
 
@@ -168,7 +169,7 @@ def main():
         sys.exit(0)
 
     # 用法一：直接调用API
-    if len(sys.argv) < 5:
+    if len(sys.argv) < 7:
         print(__doc__)
         sys.exit(1)
 
@@ -177,7 +178,8 @@ def main():
     window_id = int(sys.argv[3])
     session_id = sys.argv[4]
     ai_app_type = sys.argv[5]
-    param_args = sys.argv[6:]
+    main_window_id = int(sys.argv[6])
+    param_args = sys.argv[7:]
 
     # 解析参数
     params = parse_params(param_args)
@@ -195,6 +197,7 @@ def main():
         "ai_app_type": ai_app_type,
         "session_id": session_id,
         "window_id": window_id,
+        "main_window_id": main_window_id,
         "coordinate_type": "grid"
     }
 

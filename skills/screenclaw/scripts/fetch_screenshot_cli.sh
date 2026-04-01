@@ -2,17 +2,18 @@
 # ScreenClaw 截图获取脚本（专用 - Bash）
 #
 # 用法：
-#     bash fetch_screenshot_cli.sh <api_url> <token> <window_id> <session_id> <ai_app_type> [参数...]
+#     bash fetch_screenshot_cli.sh <api_url> <token> <window_id> <session_id> <ai_app_type> <main_window_id> [参数...]
 #
 # 参数说明：
-#     api_url     - ScreenClaw服务地址
-#     token       - 认证令牌
-#     window_id   - 窗口ID
-#     session_id  - 会话ID（必需）
-#     ai_app_type - AI应用类型（必需）
+#     api_url        - ScreenClaw服务地址
+#     token          - 认证令牌
+#     window_id      - 窗口ID
+#     session_id     - 会话ID（必需）
+#     ai_app_type    - AI应用类型（必需）
+#     main_window_id - 主窗口ID（必需，从get_window_list获取）
 #
 # 网格参数（可选）：
-#     grid_density=<值>      - 网格密度，默认5.0
+#     grid_density=<值>      - 每格宽度（像素），值越小网格越密，默认5.0
 #     grid_opacity=<值>       - 网格透明度(0-100)，默认50
 #     grid_color=<值>         - 网格颜色，默认#00FF00
 #
@@ -26,8 +27,8 @@
 # 降级路径：本脚本 → fetch_screenshot_cli.py → fetch_screenshot_cli.ps1
 #
 # 用法一（推荐）：直接调用API
-#   bash fetch_screenshot_cli.sh "http://192.168.10.190:12261" "TOKEN123" 1380176 "my-session" "claude_code"
-#   bash fetch_screenshot_cli.sh "http://192.168.10.190:12261" "TOKEN123" 1380176 "my-session" "claude_code" "grid_density=8" "number_size=14"
+#   bash fetch_screenshot_cli.sh "http://192.168.10.190:12261" "TOKEN123" 1380176 "my-session" "claude_code" 1380176
+#   bash fetch_screenshot_cli.sh "http://192.168.10.190:12261" "TOKEN123" 1380176 "my-session" "claude_code" 1380176 "grid_density=8" "number_size=14"
 #
 # 用法二（备用）：处理已保存的JSON响应（会自动删除该JSON文件）
 #   bash fetch_screenshot_cli.sh "/tmp/screenshot_response.json" "http://192.168.10.190:12261"
@@ -192,16 +193,16 @@ if [[ "$1" =~ \.json$ ]] && [ -n "$2" ]; then
 fi
 
 # 用法一：直接调用API
-if [ $# -lt 5 ]; then
+if [ $# -lt 6 ]; then
     echo "用法一（推荐）：直接调用API"
-    echo "  bash fetch_screenshot_cli.sh <api_url> <token> <window_id> <session_id> <ai_app_type> [参数...]"
+    echo "  bash fetch_screenshot_cli.sh <api_url> <token> <window_id> <session_id> <ai_app_type> <main_window_id> [参数...]"
     echo ""
     echo "示例："
-    echo "  bash fetch_screenshot_cli.sh http://192.168.10.190:12261 TOKEN123 1380176 my-session claude_code"
-    echo "  bash fetch_screenshot_cli.sh http://192.168.10.190:12261 TOKEN123 1380176 my-session claude_code grid_density=8 number_size=14"
+    echo "  bash fetch_screenshot_cli.sh http://192.168.10.190:12261 TOKEN123 1380176 my-session claude_code 1380176"
+    echo "  bash fetch_screenshot_cli.sh http://192.168.10.190:12261 TOKEN123 1380176 my-session claude_code 1380176 grid_density=8 number_size=14"
     echo ""
     echo "网格参数（可选）："
-    echo "  grid_density=<值>      - 网格密度，默认5.0"
+    echo "  grid_density=<值>      - 每格宽度（像素），值越小网格越密，默认5.0"
     echo "  grid_opacity=<值>       - 网格透明度(0-100)，默认50"
     echo "  grid_color=<值>         - 网格颜色，默认#00FF00"
     echo ""
@@ -225,7 +226,8 @@ token="$2"
 window_id="$3"
 session_id="$4"
 ai_app_type="$5"
-shift 5  # 移除前5个参数，剩余的是网格/数字参数
+main_window_id="$6"
+shift 6  # 移除前6个参数，剩余的是网格/数字参数
 
 # 检查curl是否存在
 if ! command -v curl &> /dev/null; then
@@ -240,7 +242,7 @@ screenshot_url="${api_url%/}/api/screenshot"
 grid_params=$(build_grid_params "$@")
 
 # 构建JSON
-JSON="{\"ai_app_type\":\"$ai_app_type\",\"session_id\":\"$session_id\",\"window_id\":$window_id,\"coordinate_type\":\"grid\"$grid_params}"
+JSON="{\"ai_app_type\":\"$ai_app_type\",\"session_id\":\"$session_id\",\"window_id\":$window_id,\"main_window_id\":$main_window_id,\"coordinate_type\":\"grid\"$grid_params}"
 
 # 调用API并保存到临时文件
 tmp_json=$(mktemp)

@@ -142,7 +142,7 @@ async def _execute_single_instruction(
     action_method = params.get("action_method", "background")
 
     # 成功消息：最后一步提示可截图验证
-    _success_msg = "指令已发送，可截图验证结果" if is_last else "指令已发送"
+    _success_msg = "Command sent, verify with screenshot" if is_last else "Command sent"
 
     # 获取进程信息（所有模式都需要，用于禁止检查）
     process_info = process_service.get_process_by_window_id(window_id)
@@ -156,43 +156,43 @@ async def _execute_single_instruction(
     # hijack 模式需要用户确认
     if action_method == "hijack":
         try:
-            window_title = win32gui.GetWindowText(window_id) or "未知窗口"
+            window_title = win32gui.GetWindowText(window_id) or "Unknown window"
         except Exception:
-            window_title = "未知窗口"
+            window_title = "Unknown window"
 
         # 生成操作描述
         operation_map = {
-            "click": "点击",
-            "long_press": "长按",
-            "swipe": "滑动",
-            "scroll": "滚动",
-            "right_click": "右键点击",
-            "hover": "鼠标悬浮",
-            "input_text": "输入文本",
-            "press_key": "按键"
+            "click": "Click",
+            "long_press": "Long press",
+            "swipe": "Swipe",
+            "scroll": "Scroll",
+            "right_click": "Right-click",
+            "hover": "Hover",
+            "input_text": "Input text",
+            "press_key": "Press key"
         }
         operation = operation_map.get(action, action)
 
         # 生成操作详情
         detail_parts = []
         if action in ["click", "right_click"]:
-            detail_parts.append(f"坐标: ({params.get('x', 0)}, {params.get('y', 0)})")
+            detail_parts.append(f"Coordinates: ({params.get('x', 0)}, {params.get('y', 0)})")
         elif action == "long_press":
-            detail_parts.append(f"坐标: ({params.get('x', 0)}, {params.get('y', 0)})")
-            detail_parts.append(f"时长: {params.get('duration_ms', 500)}ms")
+            detail_parts.append(f"Coordinates: ({params.get('x', 0)}, {params.get('y', 0)})")
+            detail_parts.append(f"Duration: {params.get('duration_ms', 500)}ms")
         elif action == "hover":
-            detail_parts.append(f"坐标: ({params.get('x', 0)}, {params.get('y', 0)})")
-            detail_parts.append(f"停留: {params.get('duration_ms', 500)}ms")
+            detail_parts.append(f"Coordinates: ({params.get('x', 0)}, {params.get('y', 0)})")
+            detail_parts.append(f"Stay: {params.get('duration_ms', 500)}ms")
         elif action == "swipe":
-            detail_parts.append(f"从 ({params.get('start_x', 0)}, {params.get('start_y', 0)}) 到 ({params.get('end_x', 0)}, {params.get('end_y', 0)})")
+            detail_parts.append(f"From ({params.get('start_x', 0)}, {params.get('start_y', 0)}) to ({params.get('end_x', 0)}, {params.get('end_y', 0)})")
         elif action == "scroll":
-            detail_parts.append(f"滚动量: {params.get('delta', 0)}")
+            detail_parts.append(f"Delta: {params.get('delta', 0)}")
         elif action == "input_text":
             text = params.get("text", "")
             text_preview = text[:50] + "..." if len(text) > 50 else text
-            detail_parts.append(f"输入: {text_preview}")
+            detail_parts.append(f"Text: {text_preview}")
         elif action == "press_key":
-            detail_parts.append(f"按键: {params.get('key', '')}")
+            detail_parts.append(f"Key: {params.get('key', '')}")
 
         operation_detail = ", ".join(detail_parts) if detail_parts else operation
 
@@ -231,8 +231,8 @@ async def _execute_single_instruction(
             return {"success": r.success, "message": r.error or _success_msg}
 
         elif action == "swipe":
-            cs = _calc(params["start_x"], params["start_y"])
-            ce = _calc(params["end_x"], params["end_y"])
+            cs = _calc(params["start_x"], params["start_y"], main_window_id)
+            ce = _calc(params["end_x"], params["end_y"], main_window_id)
             if not cs or not ce:
                 return {"success": False, "message": "Cannot get window rectangle"}
             r = windows_input.swipe(window_id, cs[0], cs[1], ce[0], ce[1],
@@ -268,7 +268,7 @@ async def _execute_single_instruction(
 
             px = py = vx = vy = None
             if x_pct is not None and y_pct is not None:
-                c = _calc(x_pct, y_pct)
+                c = _calc(x_pct, y_pct, main_window_id)
                 if c:
                     px, py, vx, vy = c
 
@@ -283,7 +283,7 @@ async def _execute_single_instruction(
 
             px = py = vx = vy = None
             if x_pct is not None and y_pct is not None:
-                c = _calc(x_pct, y_pct)
+                c = _calc(x_pct, y_pct, main_window_id)
                 if c:
                     px, py, vx, vy = c
 

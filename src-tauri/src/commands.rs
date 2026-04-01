@@ -7,6 +7,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::AppState;
 use crate::Config;
+use crate::{get_project_root, get_config_path};
+
+/// 打开开发者工具（提示用户使用 F12）
+#[tauri::command]
+pub async fn open_devtools() -> Result<(), String> {
+    // Tauri v2: devtools 已启用，用户可以直接按 F12 打开
+    Err("Please press F12 to open developer tools".to_string())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceStatus {
@@ -32,36 +40,6 @@ pub async fn stop_service(
 ) -> Result<(), String> {
     stop_python_service(state.inner().clone()).await;
     Ok(())
-}
-
-/// 获取项目根目录
-fn get_project_root() -> std::path::PathBuf {
-    let exe_dir = std::env::current_exe()
-        .expect("Failed to get current exe path")
-        .parent()
-        .expect("Failed to get parent directory")
-        .to_path_buf();
-
-    // 开发模式：exe在 src-tauri/target/debug/
-    // exe_dir = src-tauri/target/debug/
-    // parent() = src-tauri/target/
-    // parent() = src-tauri/
-    // parent() = 项目根目录
-    exe_dir.parent()
-        .and_then(|p| p.parent())
-        .and_then(|p| p.parent())
-        .map(|p| p.to_path_buf())
-        .unwrap_or(exe_dir)
-}
-
-/// 获取data目录路径
-fn get_data_dir() -> std::path::PathBuf {
-    get_project_root().join("data")
-}
-
-/// 获取config.json路径
-fn get_config_path() -> std::path::PathBuf {
-    get_data_dir().join("config.json")
 }
 
 /// 获取服务状态
@@ -327,64 +305,126 @@ pub async fn get_logs() -> Result<Vec<LogItem>, String> {
 
 /// 启动Python服务的内部函数
 pub async fn start_python_service(state: Arc<AppState>) {
+    println!("[START] Attempting to start Python service...");
+
     // 检查是否已经在运行
     if state.is_service_running.load(std::sync::atomic::Ordering::SeqCst) {
-        println!("Python service is already running");
+        println!("[START] Python service is already running, skipping...");
         return;
     }
 
+    // 立即标记为正在运行，防止重复启动
+    state.is_service_running.store(true, std::sync::atomic::Ordering::SeqCst);
+
     let project_root = get_project_root();
-    let python_dir = project_root.join("python");
-    let python_exe = python_dir.join("python-service.exe");
+
+    // 优先在 exe 同级目录查找 python-service.exe（打包环境）
+    let python_exe = project_root.join("python-service.exe");
 
     // 判断是开发模式还是生产模式
     let result = if python_exe.exists() {
-        // 生产模式：使用打包的exe
-        println!("Starting Python service (production mode)...");
-        Command::new(&python_exe)
-            .current_dir(&python_dir)
-            .spawn()
+        // 生产模式：使用打包的 exe
+        println!("Starting Python service (production mode): {:?}", python_exe);
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            // 使用 CREATE_NEW_PROCESS_GROUP，然后用 taskkill /T 杀进程树
+            const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+            Command::new(&python_exe)
+                .current_dir(&project_root)
+                .creation_flags(CREATE_NEW_PROCESS_GROUP)
+                .spawn()
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            Command::new(&python_exe)
+                .current_dir(&project_root)
+                .spawn()
+        }
     } else {
-        // 开发模式：使用python解释器
-        println!("Starting Python service (development mode)...");
+        // 开发模式：使用 python 解释器
+        let python_dir = project_root.join("python");
         let main_py = python_dir.join("main.py");
+        println!("Starting Python service (development mode): {:?}", main_py);
         if !main_py.exists() {
             println!("Python main.py not found: {:?}", main_py);
             return;
         }
-        Command::new("python")
-            .arg(&main_py)
-            .current_dir(&python_dir)
-            .spawn()
+        #[cfg(target_os = "windows")]
+        {
+            Command::new("python")
+                .arg(&main_py)
+                .current_dir(&python_dir)
+                .spawn()
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            Command::new("python")
+                .arg(&main_py)
+                .current_dir(&python_dir)
+                .spawn()
+        }
     };
 
     match result {
         Ok(child) => {
+            let pid = child.id();
             let mut process = state.python_process.lock().await;
             *process = Some(child);
-            state.is_service_running.store(true, std::sync::atomic::Ordering::SeqCst);
-            println!("Python service started");
+            println!("[START] Python service started successfully, PID: {}", pid);
         }
         Err(e) => {
-            println!("Failed to start Python service: {}", e);
+            println!("[START] Failed to start Python service: {}", e);
+            // 重置运行状态
+            state.is_service_running.store(false, std::sync::atomic::Ordering::SeqCst);
         }
     }
 }
 
 /// 停止Python服务的内部函数
 pub async fn stop_python_service(state: Arc<AppState>) {
+    println!("[STOP] Attempting to stop Python service...");
+
     let mut process = state.python_process.lock().await;
 
     if let Some(mut child) = process.take() {
-        match child.kill() {
-            Ok(_) => {
-                println!("Python service stopped");
-            }
-            Err(e) => {
-                println!("Failed to stop Python service: {}", e);
+        let pid = child.id();
+        println!("[STOP] Found Python process with PID: {}", pid);
+
+        // Windows: 直接使用 taskkill /F /T 杀死整个进程树
+        // 这样可以确保 PyInstaller 的子进程也被清理
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            println!("[STOP] Using taskkill to terminate process tree...");
+            let result = std::process::Command::new("taskkill")
+                .args(["/F", "/T", "/PID", &pid.to_string()])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+            match result {
+                Ok(output) => {
+                    println!("[STOP] taskkill output: {}", String::from_utf8_lossy(&output.stdout));
+                }
+                Err(e) => {
+                    println!("[STOP] taskkill failed: {}, falling back to kill", e);
+                    let _ = child.kill();
+                }
             }
         }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = child.kill();
+        }
+
+        // 等待进程退出
+        let _ = child.wait();
+        println!("[STOP] Python process {} terminated", pid);
+    } else {
+        println!("[STOP] No Python process found to stop");
     }
 
     state.is_service_running.store(false, std::sync::atomic::Ordering::SeqCst);
+    println!("[STOP] Python service stop completed");
 }

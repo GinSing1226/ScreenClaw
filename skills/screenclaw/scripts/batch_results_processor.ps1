@@ -118,11 +118,17 @@ function Invoke-BatchAndProcess {
         [Parameter(Mandatory = $true)]
         [array]$Instructions,
 
-        [string]$AiAppType = "claude_code",
+        [Parameter(Mandatory = $true)]
+        [string]$AiAppType,
 
-        [string]$SessionId = "",
+        [Parameter(Mandatory = $true)]
+        [string]$SessionId,
 
-        [int]$WindowId = 0
+        [Parameter(Mandatory = $true)]
+        [int]$WindowId,
+
+        [Parameter(Mandatory = $true)]
+        [int]$MainWindowId
     )
 
     $headers = @{
@@ -131,10 +137,11 @@ function Invoke-BatchAndProcess {
     }
 
     $body = @{
-        ai_app_type = $AiAppType
-        session_id  = $SessionId
-        window_id   = $WindowId
-        instructions = $Instructions
+        ai_app_type    = $AiAppType
+        session_id     = $SessionId
+        window_id      = $WindowId
+        main_window_id = $MainWindowId
+        instructions   = $Instructions
     } | ConvertTo-Depth -Depth 10 | ConvertTo-Json
 
     try {

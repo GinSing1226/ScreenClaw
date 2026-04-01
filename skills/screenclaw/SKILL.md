@@ -8,10 +8,6 @@ description: |
   - 需要截图并让AI分析界面元素位置
   - 需要程序化控制桌面应用程序
   - 用户提到"点击某个软件的按钮"、"在XX软件中输入"等操作
-
-  即使是通用任务，只要涉及Windows桌面控制，就必须使用此技能。
-
-  关键词：screenclaw、屏幕控制、桌面自动化、视觉操作、Windows软件控制
 ---
 
 # ScreenClaw 技能
@@ -19,18 +15,14 @@ description: |
 通过HTTP API控制ScreenClaw实现桌面软件自动化操作。
 
 > **执行前必做**：
-> 1. 调用任何API前，必须先阅读对应API的reference文档
-> 2. 调用任何API前，必须先完成上方的"调用前清单"
-> 3. screenshot API必须使用脚本调用，禁止AI自己生成curl或PowerShell命令
+> 1. 调用任何API前，先阅读对应API的reference文档（参数格式和常见陷阱都在里面）
+> 2. 调用任何API前，先完成上方的"调用前清单"
+> 3. screenshot API用脚本调用——手写curl容易出引号转义和中文编码问题
 
-## 快速开始
-
-### 核心概念
-
-**坐标系统**：网格坐标系统，截图时会在图片上显示数字标记（如50表示中间位置）。AI只需要读出目标位置对应的数字即可，无需进行百分比换算。
-
-**操作方式**：background（无感）优先，失败时用hijack（劫持）
-
+## 核心原则
+1. **三角色架构是安全网**。Planner规划→Executor执行→Evaluator验证，每个角色都是下一层的校验。跳过角色直接操作是最常见的错误来源——没有验证环节，很容易点到错误的按钮、输入到错误的窗口。无论任务被打断、用户中途干预、还是操作失败需要重试，都要回到待办清单继续——清单记录了已完成和待重做的步骤，丢失这个上下文就意味着丢失进度。
+2. **先查文档再动手**。文档沉淀了已知的解决方案和常见陷阱（如子窗口选择、坐标偏移、中文编码）。遇到问题时，盲目猜测参数或自行修改命令格式往往会产生新问题——例如用错窗口ID会导致操作打到错误的窗口。如果文档中没有覆盖当前问题，先向用户说明情况再尝试新方案。具体查阅`常见问题`章节
+3. **看图读坐标**。网格上的数字是百分比坐标。x,y格式。你看图定位元素，再读出它的坐标。
 ---
 
 ## 调用前清单（必须按顺序完成）
@@ -54,16 +46,13 @@ description: |
 - [ ] **进入Evaluator角色**：验证执行结果
 - [ ] **循环执行**：直到所有待办完成或需要重新规划
 
-### 步骤3：遇到问题时，重新查阅文档（禁止盲目尝试）
-
+### 步骤3：遇到问题时，重新查阅文档
+- [ ] **遇到验证结果与预期不同**：查阅 `SKILL.md` 的"常见问题排查"章节
 - [ ] **遇到API调用失败**：查阅 `references/api/*.md` 对应的API文档
 - [ ] **遇到参数错误**：查阅 `references/config.md` 确认参数格式
 - [ ] **遇到脚本执行失败**：查阅 `scripts/README.md` 确认使用方式
-- [ ] **遇到坐标/操作问题**：查阅 `SKILL.md` 的"常见问题排查"章节
-- [ ] **不确定时**：使用搜索工具在 `references/` 目录中搜索关键词
 
-> ⚠️ **禁止盲目尝试**：遇到问题时，**必须先查阅文档**，而不是自己猜测参数或修改命令格式。文档中已包含所有常见问题的解决方案。
-> ⚠️ **截图用script里的脚本**：必须使用 `scripts/fetch_screenshot_cli.py` 或 `scripts/fetch_screenshot_cli.ps1` 来调用截图API，禁止自己生成curl或PowerShell命令。
+- [ ] **不确定时**：使用搜索工具在 `references/` 目录中搜索关键词
 
 ---
 
@@ -127,7 +116,7 @@ ScreenClaw技能采用**三层架构**来组织任务执行：
 
 ---
 
-## 核心规则（必须遵守）
+## 核心规则
 
 ### 规则1：角色切换 + 待办驱动流程（L1: 通用角色流）
 
@@ -167,29 +156,29 @@ ScreenClaw技能采用**三层架构**来组织任务执行：
 
 **通用API调用（非截图）**：
 ```bash
-python scripts/api_call.py <api_url> <token> <endpoint> ai_app_type=<值> session_id=<值> [其他参数...]
+python scripts/api_call.py <api_url> <token> <endpoint> ai_app_type=<值> session_id=<值> main_window_id=<值> [其他参数...]
 ```
 
 **示例：**
 ```bash
 # 获取窗口列表（建议始终带include_children=true + children_filter=titled）
-python scripts/api_call.py http://192.168.10.190:12261 TOKEN get_window_list ai_app_type=claude_code session_id=wechat_20260330_143025 keyword=feishu include_children=true children_filter=titled
+python scripts/api_call.py http://192.168.10.190:12261 TOKEN get_window_list ai_app_type=claude_code session_id=wechat_20260330_143025 main_window_id=123456 keyword=feishu include_children=true children_filter=titled
 ```
 
 **截图API调用（专用）**：
 ```bash
-python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> <session_id> <ai_app_type> [网格和数字参数...]
+python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> <session_id> <ai_app_type> <main_window_id> [网格和数字参数...]
 ```
-  - **必需参数**：api_url, token, window_id, session_id, ai_app_type
+  - **必需参数**：api_url, token, window_id, session_id, ai_app_type, main_window_id
   - **可选网格参数**：grid_density, grid_opacity, grid_color
   - **可选数字参数**：number_density, number_decimal, number_size, number_color, number_opacity
   - 示例：
     ```bash
     # 基础用法（使用默认网格参数）
-    python scripts/fetch_screenshot_cli.py http://192.168.10.190:12261 TOKEN 1380176 my_session claude_code
+    python scripts/fetch_screenshot_cli.py http://192.168.10.190:12261 TOKEN 1380176 my_session claude_code 1380176
 
     # 自定义网格密度和数字大小
-    python scripts/fetch_screenshot_cli.py http://192.168.10.190:12261 TOKEN 1380176 my_session claude_code grid_density=8 number_size=14
+    python scripts/fetch_screenshot_cli.py http://192.168.10.190:12261 TOKEN 1380176 my_session claude_code 1380176 grid_density=8 number_size=14
     ```
 
 详细用法 → `scripts/README.md`
@@ -212,8 +201,8 @@ python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> <session_id
 - **session_id**：会话标识符，**整个会话使用同一个，每次API调用必须显式传入**
 - **main_window_id**：必填，用于激活最小化窗口
 
-> ⚠️ **session_id 和 ai_app_type 强制规则**：
-> - 这两个参数**必须由客户端显式传入**，脚本不会自动生成
+> ⚠️ **session_id、ai_app_type、main_window_id 强制规则**：
+> - 这三个参数**必须由客户端显式传入**，脚本不会自动生成
 > - 整个会话期间**必须使用同一个session_id**，绝对禁止更换
 > - **人在回路干涉时**（用户反馈后继续操作），**必须延续使用最初的session_id**
 
@@ -340,7 +329,7 @@ python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> <session_id
 - 来自待办清单：当前待办描述、全局参数行
 - 来自Evaluator：验证反馈、调整建议
 
-**输出协议（每一步必须遵守）**：
+**输出协议**（Evaluator依赖这些信息来验证，缺失任何一项都会导致无法判定对错）：
 
 ```
 执行动作：[操作类型](参数)
@@ -384,7 +373,7 @@ Executor的Process由3个节点组成，每个节点独立遵循T-IPO-E：
 |------|------|
 | **Trigger** | 待办状态变为in_progress |
 | **Input** | window_id, 全局参数（session_id、ai_app_type） |
-| **Process** | 执行 `fetch_screenshot_cli.py <api_url> <token> <window_id> <session_id> <ai_app_type>` |
+| **Process** | 执行 `fetch_screenshot_cli.py <api_url> <token> <window_id> <session_id> <ai_app_type> <main_window_id>` |
 | **Output** | 图片路径 |
 | **Exception** | 脚本失败 → 按降级路径切换（py→ps1→sh→手动curl） |
 
@@ -396,7 +385,7 @@ Executor的Process由3个节点组成，每个节点独立遵循T-IPO-E：
 | **Input** | 图片路径、待办描述（目标元素） |
 | **Process** | 目标描述 → 先验自毁 → 全域扫描 → 排除筛选 → 证据确认 |
 | **Output** | 目标坐标(x,y) + 周边元素（≥3个） |
-| **Exception** | 无法定位 → 调整网格参数重新截图（增大density、降低opacity） |
+| **Exception** | 无法定位 → 调整网格参数重新截图（减小density使网格更密、降低opacity） |
 
 #### 节点3：执行操作API
 
@@ -404,7 +393,7 @@ Executor的Process由3个节点组成，每个节点独立遵循T-IPO-E：
 |------|------|
 | **Trigger** | 坐标定位完成 |
 | **Input** | 坐标(x,y)、window_id、操作类型、全局参数（session_id、ai_app_type） |
-| **Process** | 执行 `api_call.py <api_url> <token> <endpoint> ai_app_type=<值> session_id=<值> [其他参数...]` |
+| **Process** | 执行 `api_call.py <api_url> <token> <endpoint> ai_app_type=<值> session_id=<值> main_window_id=<值> [其他参数...]` |
 | **Output** | API响应结果 |
 | **Exception** | 操作失败 → 切换操作方式（background→hijack）或切换窗口ID（主窗口→子窗口） |
 
@@ -590,7 +579,7 @@ curl -X GET \
 curl -X POST \
   -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -H "Content-Type: application/json" \
-  -d '{"ai_app_type": "claude_code", "session_id": "test", "keyword": ""}' \
+  -d '{"ai_app_type": "claude_code", "session_id": "test", "main_window_id": 12345, "keyword": ""}' \
   "http://localhost:12261/api/get_window_list"
 ```
 
@@ -599,7 +588,7 @@ curl -X POST \
 curl -X POST \
   -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -H "Content-Type: application/json" \
-  -d '{"ai_app_type": "claude_code", "session_id": "test", "window_id": 12345}' \
+  -d '{"ai_app_type": "claude_code", "session_id": "test", "window_id": 12345, "main_window_id": 12345}' \
   "http://localhost:12261/api/screenshot"
 ```
 
@@ -611,9 +600,9 @@ curl -X POST \
 
 ---
 
-## 常见问题排查（Executor必须熟读）
+## 常见问题排查
 
-> **注意**：本章节供Executor参考，Evaluator只需关注验证流程即可。
+> 90%的操作失败源于这些已知陷阱。本章节供Executor参考，Evaluator只需关注验证流程。
 
 ### 操作不成功
 
@@ -652,7 +641,7 @@ curl -X POST \
 
 | 参数 | 当前值 | 问题 | 调整方案 |
 |------|--------|------|----------|
-| `density` | 5.0 | 网格太宽，不好判断 | 增大（如改为10） |
+| `density` | 5.0 | 网格太宽，不好判断 | 减小（如改为3） |
 | `opacity` | 50 | 网格遮挡内容 | 降低（如改为30） |
 | `color` | "#00FF00" | 颜色与内容冲突 | 更换（如改为#FF0000） |
 | `number_density` | 2 | 数字太少，定位困难 | 减小（如改为1） |
@@ -666,7 +655,7 @@ curl -X POST \
 - **解决**：使用 `main_window_id` 激活窗口，或请求用户协助
 
 #### 3. 操作方式是否正确（background/hijack）
-慎重切换操作方式，必须有明确的判断标准和验证过程。先排查窗口和坐标问题
+先排查窗口和坐标问题。尝试多次后，才能慎重切换操作方式，必须有明确的判断标准和验证过程。
 
 **判断标准**：
 - 子窗口和坐标都正确，但操作仍然无效

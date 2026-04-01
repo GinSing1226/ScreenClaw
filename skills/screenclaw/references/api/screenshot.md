@@ -37,14 +37,14 @@ Content-Type: application/json
 | `ai_app_type` | string | 是 | - | AI应用类型（如claude_code） |
 | `session_id` | string | 是 | - | 会话唯一标识，整个会话保持一致 |
 | `window_id` | int | 是 | - | 目标窗口句柄，从get_window_list获取 |
-| `main_window_id` | int | 建议 | - | 主窗口ID（用于激活最小化窗口） |
+| `main_window_id` | int | 是 | - | 主窗口ID（用于激活最小化窗口） |
 | `coordinate_type` | string | 否 | "grid" | 坐标类型：grid/no |
 
 ### 网格参数（coordinate_type=grid时）
 
 | 参数 | 类型 | 默认值 | 说明 | 调整时机 |
 |------|------|--------|------|----------|
-| `density` | float | 5.0 | 网格密度（0-100） | 网格太宽时增大 |
+| `density` | float | 5.0 | 每格宽度（像素），值越小网格越密 | 网格太宽时减小（如改为3） |
 | `opacity` | int | 50 | 网格透明度（0-100） | 遮挡内容时降低 |
 | `color` | string | "#00FF00" | 网格颜色（HEX） | 与内容冲突时更换 |
 | `number_density` | int | 2 | 每隔几格显示坐标 | 数字太少时减小 |
@@ -61,6 +61,7 @@ Content-Type: application/json
   "ai_app_type": "claude_code",
   "session_id": "session-123",
   "window_id": 1001,
+  "main_window_id": 1001,
   "coordinate_type": "grid"
 }
 ```
@@ -71,6 +72,7 @@ Content-Type: application/json
   "ai_app_type": "claude_code",
   "session_id": "session-123",
   "window_id": 1001,
+  "main_window_id": 1001,
   "coordinate_type": "grid",
   "grid": {"density": 10, "opacity": 60, "color": "#FF0000"},
   "coordinate": {"number_size": 12, "number_density": 1}
@@ -83,6 +85,7 @@ Content-Type: application/json
   "ai_app_type": "claude_code",
   "session_id": "session-123",
   "window_id": 1001,
+  "main_window_id": 1001,
   "coordinate_type": "no"
 }
 ```
@@ -175,13 +178,17 @@ if "image_base64" in result["data"]:
 
 ## 参数调整指南
 
+### 遇到问题时的排查顺序
+1. **API成功但截图效果与预期不同**（如坐标找不到、网格看不到）→ 先尝试调整本文档的「参数调整指南」，无效后查阅 SKILL.md 的「常见问题排查」章节
+2. **API调用失败**（返回错误码）→ 对照本文档的请求参数检查参数格式
+
 ### 坐标难以判断时
 
-如果需要长时间分析才能确定坐标，说明参数需要调整：
+如果需要长时间分析才能确定坐标，或重试多次坐标仍然不正确，说明参数需要调整：
 
 | 问题 | 解决方案 |
 |------|----------|
-| 网格太宽 | 增大 `density`（如改为10） |
+| 网格太宽 | 减小 `density`（如改为3） |
 | 网格遮挡内容 | 降低 `opacity`（如改为30） |
 | 颜色混淆 | 更换 `color`（如改为#FF0000） |
 | 数字太少 | 减小 `number_density`（如改为1） |

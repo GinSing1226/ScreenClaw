@@ -40,7 +40,7 @@ Content-Type: application/json
 | `ai_app_type` | string | 是 | - | AI应用类型 | 判断当前AI是什么应用，就用什么值 |
 | `session_id` | string | 是 | - | 会话唯一标识 | 获取当前会话唯一标识，获取不到则随机生成 |
 | `window_id` | int | 是 | - | 目标窗口句柄 | 从get_window_list获取 |
-| `main_window_id` | int | 建议 | - | 主窗口ID（用于激活最小化窗口） | 从get_window_list获取 |
+| `main_window_id` | int | 是 | - | 主窗口ID（用于激活最小化窗口） | 从get_window_list获取 |
 | `x` | float | 是 | - | 横坐标（从截图的网格标记中直接读出的数字） | 从截图分析得出 |
 | `y` | float | 是 | - | 纵坐标（从截图的网格标记中直接读出的数字） | 从截图分析得出 |
 | `duration_ms` | int | 否 | 500 | 停留时长（毫秒） | 根据需要调整 |
@@ -54,6 +54,7 @@ Content-Type: application/json
   "ai_app_type": "claude_code",
   "session_id": "session-123",
   "window_id": 1001,
+  "main_window_id": 1001,
   "x": 50.0,
   "y": 30.0,
   "action_method": "background"
@@ -66,6 +67,7 @@ Content-Type: application/json
   "ai_app_type": "claude_code",
   "session_id": "session-123",
   "window_id": 1001,
+  "main_window_id": 1001,
   "instructions": [
     { "action": "hover", "params": { "x": 50, "y": 30, "duration_ms": 1000, "action_method": "background" } },
     { "action": "wait", "params": { "duration_ms": 100 } },
@@ -80,6 +82,7 @@ Content-Type: application/json
   "ai_app_type": "claude_code",
   "session_id": "session-123",
   "window_id": 1001,
+  "main_window_id": 1001,
   "x": 50.0,
   "y": 30.0,
   "duration_ms": 2000,
@@ -112,6 +115,11 @@ Content-Type: application/json
 
 ## 使用技巧
 
+### 遇到问题时的排查顺序
+1. **API成功但效果与预期不同**（如hover了但tooltip没出来）→ 查阅 SKILL.md 的「常见问题排查」章节
+2. **API调用失败**（返回错误码）→ 对照本文档的请求参数检查参数格式
+
+### 操作技巧
 1. **hover后截图**：常用场景是hover后再截图，捕获隐藏的UI元素
 2. **调整停留时长**：某些UI元素可能需要更长的hover时间才会显示
 3. **配合wait**：hover后添加短暂wait，确保UI元素完全显示后再截图

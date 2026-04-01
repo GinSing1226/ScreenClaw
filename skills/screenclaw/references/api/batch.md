@@ -34,7 +34,7 @@ description: 执行多步骤的固定流程（如登录、导航）、减少网�
 | `ai_app_type` | string | 是 | - | AI应用类型 | 判断当前AI是什么应用，就用什么值 |
 | `session_id` | string | 是 | - | 会话唯一标识 | 获取当前会话唯一标识，获取不到则随机生成 |
 | `window_id` | int | 是 | - | 目标窗口句柄 | 从get_window_list获取 |
-| `main_window_id` | int | 建议 | - | 主窗口ID（用于激活最小化窗口） | 从get_window_list获取 |
+| `main_window_id` | int | 是 | - | 主窗口ID（用于激活最小化窗口） | 从get_window_list获取 |
 | `instructions` | array | 是 | - | 指令列表 | 根据操作流程设置 |
 
 ### instructions 结构
@@ -50,6 +50,7 @@ description: 执行多步骤的固定流程（如登录、导航）、减少网�
   "ai_app_type": "claude_code",
   "session_id": "session-123",
   "window_id": 1001,
+  "main_window_id": 1001,
   "instructions": [
     { "action": "screenshot", "params": { "coordinate_type": "grid" } },
     { "action": "click", "params": { "x": 50, "y": 35 } },
@@ -282,6 +283,11 @@ batch中可以包含截图指令（screenshot），截图数据（路径和base6
 
 ## 使用技巧
 
+### 遇到问题时的排查顺序
+1. **batch成功但某步效果与预期不同**（如点了但没反应）→ 查阅 SKILL.md 的「常见问题排查」章节
+2. **API调用失败**（返回错误码）→ 对照各操作类型的文档检查参数格式
+
+### 操作技巧
 1. **操作之间添加wait**：确保UI稳定后再执行下一步
 2. **使用场景模板**：已沉淀的场景模板可以直接转换为batch格式
 3. **失败处理**：batch失败时会中断，需要检查results中的失败原因

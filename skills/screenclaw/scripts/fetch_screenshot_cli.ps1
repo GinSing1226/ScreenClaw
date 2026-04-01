@@ -4,6 +4,7 @@ param(
     [Parameter(Mandatory=$true)][int]$WindowId,
     [Parameter(Mandatory=$true)][string]$SessionId,
     [Parameter(Mandatory=$true)][string]$AiAppType,
+    [Parameter(Mandatory=$true)][int]$MainWindowId,
     [Parameter(ValueFromRemainingArguments=$true)][string[]]$RemainingArgs
 )
 
@@ -53,6 +54,7 @@ function Build-GridParams {
 
 # 解析参数
 $scriptParams = Parse-Params -ParamArgs $RemainingArgs
+
 $gridParams = Build-GridParams -Params $scriptParams
 
 $screenshotUrl = "$ApiUrl/api/screenshot"
@@ -67,6 +69,7 @@ $body = @{
     ai_app_type = $AiAppType
     session_id = $SessionId
     window_id = $WindowId
+    main_window_id = $MainWindowId
     coordinate_type = "grid"
 }
 

@@ -30,6 +30,24 @@ onMounted(() => {
   loadStatus()
   loadConfig()
   loadLogs()
+
+  // F12 打开开发者工具
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'F12') {
+      e.preventDefault()
+      // 尝试使用浏览器内置方式
+      const event = new KeyboardEvent('keydown', {
+        key: 'F12',
+        code: 'F12',
+        keyCode: 123,
+        which: 123,
+        bubbles: true,
+        cancelable: true
+      })
+      window.dispatchEvent(event)
+    }
+  }
+  window.addEventListener('keydown', handleKeyDown)
 })
 </script>
 

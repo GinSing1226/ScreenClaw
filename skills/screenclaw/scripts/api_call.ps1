@@ -67,13 +67,17 @@ function Parse-Params {
 
 $scriptParams = Parse-Params -ParamArgs $RemainingArgs
 
-# 强制检查：ai_app_type 和 session_id 必须由客户端显式传入
+# 强制检查：ai_app_type、session_id、main_window_id 必须由客户端显式传入
 if (-not $scriptParams.ContainsKey('ai_app_type')) {
     Write-Error "错误：ai_app_type 参数必须显式传入。例如：ai_app_type=claude_code"
     exit 1
 }
 if (-not $scriptParams.ContainsKey('session_id')) {
     Write-Error "错误：session_id 参数必须显式传入。格式：app_name_YYYYMMDD_HHMMSS"
+    exit 1
+}
+if (-not $scriptParams.ContainsKey('main_window_id')) {
+    Write-Error "错误：main_window_id 参数必须显式传入。从get_window_list获取"
     exit 1
 }
 

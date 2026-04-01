@@ -99,10 +99,10 @@ class WindowsInputInjector:
         if action_method == "hijack":
             if self._hijack_click(hwnd, virtual_x, virtual_y):
                 return InjectResult(True, None, "hijack")
-            return InjectResult(False, "点击操作失败", "hijack")
+            return InjectResult(False, "Click operation failed", "hijack")
         if self._background_click(hwnd, virtual_x, virtual_y):
             return InjectResult(True, None, "background")
-        return InjectResult(False, "点击操作失败", "background")
+        return InjectResult(False, "Click operation failed", "background")
 
     def right_click(self, hwnd: int, physical_x: int, physical_y: int,
                     virtual_x: int, virtual_y: int,
@@ -111,11 +111,11 @@ class WindowsInputInjector:
             screen_x, screen_y = self._client_to_screen(hwnd, virtual_x, virtual_y)
             if self._hijack_right_click(hwnd, screen_x, screen_y):
                 return InjectResult(True, None, "hijack")
-            return InjectResult(False, "右键操作失败", "hijack")
+            return InjectResult(False, "Right-click operation failed", "hijack")
         # background 使用 virtual 坐标
         if self._background_right_click(hwnd, virtual_x, virtual_y):
             return InjectResult(True, None, "background")
-        return InjectResult(False, "右键操作失败", "background")
+        return InjectResult(False, "Right-click operation failed", "background")
 
     def long_press(self, hwnd: int, physical_x: int, physical_y: int,
                    virtual_x: int, virtual_y: int, duration_ms: int,
@@ -124,11 +124,11 @@ class WindowsInputInjector:
             screen_x, screen_y = self._client_to_screen(hwnd, virtual_x, virtual_y)
             if self._hijack_long_press(hwnd, screen_x, screen_y, duration_ms):
                 return InjectResult(True, None, "hijack")
-            return InjectResult(False, "长按操作失败", "hijack")
+            return InjectResult(False, "Long press operation failed", "hijack")
         # background 使用 virtual 坐标
         if self._background_long_press(hwnd, virtual_x, virtual_y, duration_ms):
             return InjectResult(True, None, "background")
-        return InjectResult(False, "长按操作失败", "background")
+        return InjectResult(False, "Long press operation failed", "background")
 
     def swipe(self, hwnd: int,
               physical_sx: int, physical_sy: int, physical_ex: int, physical_ey: int,
@@ -139,11 +139,11 @@ class WindowsInputInjector:
             se = self._client_to_screen(hwnd, virtual_ex, virtual_ey)
             if self._hijack_swipe(hwnd, ss[0], ss[1], se[0], se[1]):
                 return InjectResult(True, None, "hijack")
-            return InjectResult(False, "滑动操作失败", "hijack")
+            return InjectResult(False, "Swipe operation failed", "hijack")
         # background 使用 virtual 坐标（与 click 一致，修复 DPI 缩放问题）
         if self._background_swipe(hwnd, virtual_sx, virtual_sy, virtual_ex, virtual_ey):
             return InjectResult(True, None, "background")
-        return InjectResult(False, "滑动操作失败", "background")
+        return InjectResult(False, "Swipe operation failed", "background")
 
     def scroll(self, hwnd: int, physical_x: int, physical_y: int,
                virtual_x: int, virtual_y: int, delta: int,
@@ -152,10 +152,10 @@ class WindowsInputInjector:
             screen_x, screen_y = self._client_to_screen(hwnd, virtual_x, virtual_y)
             if self._hijack_scroll(hwnd, screen_x, screen_y, delta):
                 return InjectResult(True, None, "hijack")
-            return InjectResult(False, "滚动操作失败", "hijack")
+            return InjectResult(False, "Scroll operation failed", "hijack")
         if self._background_scroll(hwnd, virtual_x, virtual_y, delta):
             return InjectResult(True, None, "background")
-        return InjectResult(False, "滚动操作失败", "background")
+        return InjectResult(False, "Scroll operation failed", "background")
 
     def hover(self, hwnd: int, physical_x: int, physical_y: int,
               virtual_x: int, virtual_y: int, duration_ms: int,
@@ -177,12 +177,12 @@ class WindowsInputInjector:
             success = self._hijack_hover(hwnd, screen_x, screen_y, duration_ms, semi_blocking=True)
             if success:
                 return InjectResult(True, None, "hijack")
-            return InjectResult(False, "悬浮操作失败", "hijack")
+            return InjectResult(False, "Hover operation failed", "hijack")
         # background 也是半阻塞
         success = self._background_hover(hwnd, virtual_x, virtual_y, duration_ms, semi_blocking=True)
         if success:
             return InjectResult(True, None, "background")
-        return InjectResult(False, "悬浮操作失败", "background")
+        return InjectResult(False, "Hover operation failed", "background")
 
     def input_text(self, hwnd: int, physical_x: int = None, physical_y: int = None,
                    virtual_x: int = None, virtual_y: int = None, text: str = None, newline_key: str = None,
@@ -207,7 +207,7 @@ class WindowsInputInjector:
                 # 无坐标 hijack，直接执行
                 if self._hijack_input_text(hwnd, None, None, text):
                     return InjectResult(True, None, "hijack")
-            return InjectResult(False, "输入文本失败", "hijack")
+            return InjectResult(False, "Input text operation failed", "hijack")
         # background 使用 virtual 坐标
         if virtual_x is not None and virtual_y is not None:
             if self._background_input_text(hwnd, virtual_x, virtual_y, text, newline_key):
@@ -216,7 +216,7 @@ class WindowsInputInjector:
             # 无坐标 background，直接输入
             if self._background_input_text(hwnd, None, None, text, newline_key):
                 return InjectResult(True, None, "background")
-        return InjectResult(False, "输入文本失败", "background")
+        return InjectResult(False, "Input text operation failed", "background")
 
     def key_press(self, hwnd: int, key: str,
                   physical_x: int = None, physical_y: int = None,
@@ -238,12 +238,12 @@ class WindowsInputInjector:
             if self._hijack_key_press(hwnd, key, virtual_x, virtual_y,
                                       duration_ms, non_blocking):
                 return InjectResult(True, None, "hijack")
-            return InjectResult(False, "按键操作失败", "hijack")
+            return InjectResult(False, "Key press operation failed", "hijack")
         # background 使用 virtual 坐标
         if self._background_key_press(hwnd, key, virtual_x, virtual_y,
                                       duration_ms, non_blocking):
             return InjectResult(True, None, "background")
-        return InjectResult(False, "按键操作失败", "background")
+        return InjectResult(False, "Key press operation failed", "background")
 
     # ============ background 实现（无感操作）============
 
@@ -849,7 +849,25 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
             timeout: 超时秒数
             non_blocking: True 时用 Popen 不等待完成（用于 duration_ms 的并发按键）
             semi_blocking: True 时启动子进程后等待 100ms（用于 hover 等待鼠标到位）
+
+        Note:
+            打包环境(frozen)下直接在当前进程中执行代码，因为 sys.executable
+            指向的是打包后的exe，不支持 -c 参数。
         """
+        # 检测是否在打包环境中
+        is_frozen = getattr(sys, 'frozen', False)
+
+        if is_frozen:
+            # 打包环境：直接在当前进程中执行代码
+            try:
+                # 使用exec执行代码，创建一个独立的命名空间
+                exec_namespace = {}
+                exec(code, exec_namespace)
+                return True
+            except Exception as e:
+                return False
+
+        # 开发环境：使用子进程执行
         try:
             if non_blocking or semi_blocking:
                 proc = subprocess.Popen(
@@ -863,31 +881,20 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
                     time.sleep(0.2)
                     if proc.poll() is not None:
                         # 子进程已经退出了，说明启动失败
-                        print(f"[SubprocessError] semi_blocking subprocess exited immediately with code={proc.returncode}")
                         return False
-                    print(f"[Subprocess] semi_blocking subprocess started and mouse positioned, pid={proc.pid}")
                 else:
                     # 非阻塞：检查子进程是否启动
                     time.sleep(0.01)
                     if proc.poll() is not None:
-                        print(f"[SubprocessError] non_blocking subprocess exited immediately with code={proc.returncode}")
                         return False
-                    print(f"[Subprocess] non_blocking subprocess started with pid={proc.pid}")
                 return True
             else:
                 result = subprocess.run(
                     [sys.executable, '-c', code],
                     capture_output=True, text=True, timeout=timeout
                 )
-                if result.returncode != 0:
-                    print(f"[SubprocessError] returncode={result.returncode}")
-                    if result.stderr:
-                        print(f"[SubprocessError] stderr={result.stderr[:500]}")
-                if result.stdout and result.stdout.strip():
-                    print(f"[SubprocessLog] {result.stdout.strip()[:500]}")
                 return result.returncode == 0
         except Exception as e:
-            print(f"[SubprocessError] exception={e}")
             return False
 
     def _client_to_screen(self, hwnd: int, x: int, y: int) -> Tuple[int, int]:

@@ -16,7 +16,8 @@
         "height": 700,
         "resizable": true,
         "center": true,
-        "visible": true
+        "visible": true,
+        "devtools": true
       }
     ],
     "security": {
@@ -33,7 +34,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": []
+    "resources": [
+      "../../data/config.json"
+    ]
   },
   "plugins": {}
 }
