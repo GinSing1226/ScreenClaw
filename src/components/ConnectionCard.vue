@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useService } from '../composables/useService'
 
 const { t } = useI18n()
-const { status, toggleService, copyToken, regenerateToken } = useService()
+const { status, ipReady, toggleService, copyToken, regenerateToken } = useService()
 
 const collapsed = ref(false)
 
@@ -36,7 +36,15 @@ const emit = defineEmits<{
         </div>
         <div class="connection-item">
           <span class="connection-label">{{ t('service.lanAddress') }}</span>
-          <code class="connection-value">http://{{ status.local_ip }}:{{ status.port }}</code>
+          <code class="connection-value" :class="{ 'ip-loading': !ipReady }">
+            <template v-if="!ipReady">
+              <span class="ip-spinner"></span>
+              {{ t('common.loading') }}
+            </template>
+            <template v-else>
+              http://{{ status.local_ip }}:{{ status.port }}
+            </template>
+          </code>
         </div>
         <div class="connection-item token-item">
           <span class="connection-label">{{ t('service.token') }}</span>
@@ -191,6 +199,29 @@ const emit = defineEmits<{
   background: var(--sc-bg-secondary);
   padding: var(--sc-space-2) var(--sc-space-3);
   border-radius: var(--sc-radius-sm);
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+}
+
+.connection-value.ip-loading {
+  color: var(--sc-text-tertiary);
+}
+
+.ip-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--sc-border);
+  border-top-color: var(--sc-text-tertiary);
+  border-radius: 50%;
+  animation: ip-spin 0.8s linear infinite;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+@keyframes ip-spin {
+  to { transform: rotate(360deg); }
 }
 
 .token-item {

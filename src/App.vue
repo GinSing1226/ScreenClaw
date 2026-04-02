@@ -27,9 +27,13 @@ const viewLogDetail = (log: LogItem) => {
 }
 
 onMounted(() => {
-  loadStatus()
-  loadConfig()
-  loadLogs()
+  // 并行加载，不互相阻塞
+  Promise.all([loadStatus(), loadConfig(), loadLogs()])
+
+  // Python 服务启动后会更新局域网 IP，5 秒后刷新并标记就绪
+  setTimeout(() => {
+    loadStatus(true)
+  }, 5000)
 
   // F12 打开开发者工具
   const handleKeyDown = (e: KeyboardEvent) => {

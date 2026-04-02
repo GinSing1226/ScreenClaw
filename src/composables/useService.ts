@@ -15,11 +15,14 @@ const status = ref<ServiceStatus>({
   token: ''
 })
 
+const ipReady = ref(false)
+
 export function useService() {
-  const loadStatus = async () => {
+  const loadStatus = async (markIpReady = false) => {
     try {
       const result = await invoke<ServiceStatus>('get_service_status')
       status.value = result
+      if (markIpReady) ipReady.value = true
     } catch (error) {
       console.error('Failed to load service status:', error)
     }
@@ -29,10 +32,12 @@ export function useService() {
     try {
       if (status.value.is_running) {
         await invoke('stop_service')
+        await loadStatus()
       } else {
         await invoke('start_service')
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        await loadStatus()
       }
-      await loadStatus()
     } catch (error) {
       console.error('Failed to toggle service:', error)
     }
@@ -53,6 +58,7 @@ export function useService() {
 
   return {
     status,
+    ipReady,
     loadStatus,
     toggleService,
     copyToken,

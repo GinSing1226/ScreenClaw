@@ -241,10 +241,13 @@ fn main() {
                 })
                 .build(app)?;
 
-            // 启动Python服务
+            // 后台启动Python服务（不阻塞窗口渲染）
             let state = app.state::<Arc<AppState>>();
-            tauri::async_runtime::block_on(async {
-                commands::start_python_service(state.inner().clone()).await;
+            let state_clone = state.inner().clone();
+            std::thread::spawn(move || {
+                tauri::async_runtime::block_on(async {
+                    commands::start_python_service(state_clone).await;
+                });
             });
 
             Ok(())

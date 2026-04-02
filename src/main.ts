@@ -143,7 +143,8 @@ const i18n = createI18n({
         close: '关闭',
         copy: '复制',
         lineByLine: '每行一个',
-        refresh: '刷新'
+        refresh: '刷新',
+        loading: '获取中...'
       },
       aiIntegrate: {
         button: 'AI自动集成',
@@ -158,7 +159,7 @@ const i18n = createI18n({
         stepTwo: '第二步',
         stepTwoTitle: '写入技能配置',
         stepTwoDesc: '将下面的地址和令牌保存到技能配置里',
-        stepTwoConfigPath: '~/.openclaw/screenclaw/reference/config.json',
+        stepTwoConfigPath: '~/.openclaw/screenclaw/reference/config.md',
         stepThree: '第三步',
         stepThreeTitle: '更新openclaw主配置',
         stepThreeDesc: '将技能目录更新到openclaw.json',
@@ -187,7 +188,7 @@ const i18n = createI18n({
         othersStepTwo: '第二步',
         othersStepTwoTitle: '配置',
         othersStepTwoDesc: '将下面的地址和令牌保存到技能配置里',
-        othersConfigFilePath: 'screenclaw/reference/config.json'
+        othersConfigFilePath: 'screenclaw/reference/config.md'
       }
     },
     en_US: {
@@ -306,7 +307,8 @@ const i18n = createI18n({
         close: 'Close',
         copy: 'Copy',
         lineByLine: 'one per line',
-        refresh: 'Refresh'
+        refresh: 'Refresh',
+        loading: 'Loading...'
       },
       aiIntegrate: {
         button: 'AI Auto Integrate',
@@ -321,7 +323,7 @@ const i18n = createI18n({
         stepTwo: 'Step 2',
         stepTwoTitle: 'Write Skill Config',
         stepTwoDesc: 'Save the address and token below to the skill config',
-        stepTwoConfigPath: '~/.openclaw/screenclaw/reference/config.json',
+        stepTwoConfigPath: '~/.openclaw/screenclaw/reference/config.md',
         stepThree: 'Step 3',
         stepThreeTitle: 'Update OpenClaw Main Config',
         stepThreeDesc: 'Update skill directory to openclaw.json',
@@ -350,7 +352,7 @@ const i18n = createI18n({
         othersStepTwo: 'Step 2',
         othersStepTwoTitle: 'Configuration',
         othersStepTwoDesc: 'Save the address and token below to the skill config',
-        othersConfigFilePath: 'screenclaw/reference/config.json'
+        othersConfigFilePath: 'screenclaw/reference/config.md'
       }
     }
   }
