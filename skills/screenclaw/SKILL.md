@@ -46,13 +46,12 @@ description: |
 - [ ] **进入Evaluator角色**：验证执行结果
 - [ ] **循环执行**：直到所有待办完成或需要重新规划
 
-### 步骤3：遇到问题时，重新查阅文档
-- [ ] **遇到验证结果与预期不同**：查阅 `SKILL.md` 的"常见问题排查"章节
-- [ ] **遇到API调用失败**：查阅 `references/api/*.md` 对应的API文档
-- [ ] **遇到参数错误**：查阅 `references/config.md` 确认参数格式
-- [ ] **遇到脚本执行失败**：查阅 `scripts/README.md` 确认使用方式
-
-- [ ] **不确定时**：使用搜索工具在 `references/` 目录中搜索关键词
+### 步骤3：文档索引（遇问题时按此查阅）
+- API调用失败 → `references/api/*.md`
+- 参数错误 → `references/config.md`
+- 脚本执行失败 → `scripts/README.md`
+- 坐标/操作问题 → 本SKILL.md的"常见问题排查"章节
+- 不确定时 → 使用搜索工具在 `references/` 目录搜索关键词
 
 ---
 
@@ -82,8 +81,16 @@ ScreenClaw技能采用**三层架构**来组织任务执行：
 假设用户说"**帮我在微信发消息给产品组**"，完整流程如下：
 
 **第1步：Planner角色**（规划）
-- 用TodoWrite创建待办清单
-- 首行设置全局参数：`session_id=wechat_20260330_143025, ai_app_type=claude_code, ...`
+- 用TodoWrite创建待办清单，首行为守则，次行为全局参数：
+  ```
+  - [in_progress] 守则：三角色 | 脚本调用(py→ps1→sh→curl) | 遇问题先查文档 | 排查：换窗口(须重截图)→读准坐标(≤5次)→换操作模式
+  - [in_progress] 全局参数：session_id=wechat_20260330_143025, ai_app_type=claude_code
+  - [pending] 规划：分析任务，拆解步骤
+  - [pending] 执行：点击群聊"产品组"
+  - [pending] 评估：验证是否成功选中
+  ...
+  - [pending] 沉淀复盘
+  ```
 
 **第2步：Executor角色**（执行 - 第一个待办）
 - 调用 `get_window_list` 找到微信窗口
@@ -135,15 +142,19 @@ ScreenClaw技能采用**三层架构**来组织任务执行：
 - **重试5次仍失败** → 切换到Planner重新规划
 - Evaluator发现根本性问题时 → 也可触发Planner重新规划
 
-**待办清单格式**：
+**待办清单格式**（Planner创建，后续角色按此执行）：
 ```
-- [in_progress] 全局参数：session_id=xxx, ai_app_type=xxx, main_window_id=xxx, api_url=xxx, token=xxx
-- [in_progress] 执行：具体操作描述
+- [in_progress] 守则：三角色 | 脚本调用(py→ps1→sh→curl) | 遇问题先查文档 | 排查：换窗口(须重截图)→读准坐标(≤5次)→换操作模式
+- [in_progress] 全局参数：session_id=xxx, ai_app_type=xxx
+- [pending] 规划：任务分析与步骤拆解
+- [pending] 执行：具体操作描述
 - [pending] 评估：验证标准描述
+- [pending] 沉淀复盘
 ```
 
 **关键规则**：
-- Planner使用TodoWrite创建待办清单，首行必须包含全局参数（session_id、ai_app_type等）
+- **守则行必须在最前面**——AI自己输出了就会遵守，比文档里反复强调更有效
+- **全局参数行只放session_id和ai_app_type**——api_url/token每次脚本调用自带，main_window_id随进程变化
 - 所有角色共享同一个session_id，整个会话期间绝对禁止更换
 - 只有Evaluator认为通过才能进入下一个待办
 
@@ -212,15 +223,6 @@ python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> <session_id
 > - 点击类操作（click/long_press/right_click）：主窗口通常可工作
 > - 输入/按键/运动类操作（input_text/press_key/swipe/scroll）：通常需要子窗口
 
-### 规则5：问题排查
-
-遇到问题时查阅对应文档：
-- **API调用失败** → `references/api/*.md` 对应的API文档
-- **参数错误** → `references/config.md`
-- **脚本执行失败** → `scripts/README.md`
-- **坐标/操作问题** → 本SKILL.md的"常见问题排查"章节
-- **不确定时** → 使用搜索工具在 `references/` 目录搜索关键词
-
 ---
 
 ## 三角色架构
@@ -273,10 +275,14 @@ python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> <session_id
 - 分解任务步骤（MECE原则）
 - **使用TodoWrite工具创建待办清单**，格式如下：
   ```
-  - [in_progress] 执行：具体操作描述
+  - [in_progress] 守则：三角色 | 脚本调用(py→ps1→sh→curl) | 遇问题先查文档 | 排查：换窗口(须重截图)→读准坐标(≤5次)→换操作模式
+  - [in_progress] 全局参数：session_id=xxx, ai_app_type=xxx
+  - [pending] 规划：任务分析与步骤拆解
+  - [pending] 执行：具体操作描述
   - [pending] 评估：验证标准描述
+  - [pending] 沉淀复盘
   ```
-- **确保首行包含全局参数**：session_id、ai_app_type、main_window_id、api_url、token
+- **确保首行为守则行，次行为全局参数行**（只含session_id和ai_app_type）
 - **重试失败时**：重新分析场景，调整计划步骤
   - 例如：找不到群聊 → 改为搜索群聊
 - **不负责**：操作模式选择、参数调整、API调用
@@ -285,14 +291,19 @@ python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> <session_id
 
 **待办格式示例**：
 ```
-- [in_progress] 全局参数：session_id=wechat_20260330_143025, ai_app_type=claude_code, main_window_id=123456, api_url=http://..., token=xxx
+- [in_progress] 守则：三角色 | 脚本调用(py→ps1→sh→curl) | 遇问题先查文档 | 排查：换窗口(须重截图)→读准坐标(≤5次)→换操作模式
+- [in_progress] 全局参数：session_id=wechat_20260330_143025, ai_app_type=claude_code
+- [pending] 规划：分析任务，拆解为点击群聊→输入消息→发送三步
 - [pending] 执行：点击群聊"产品组"
 - [pending] 评估：验证是否成功选中
-- [pending] 执行：点击输入框
-- [pending] 评估：验证是否激活
+- [pending] 执行：点击输入框并输入消息
+- [pending] 评估：验证消息是否输入成功
+- [pending] 执行：点击发送按钮
+- [pending] 评估：验证消息是否发送成功
+- [pending] 沉淀复盘
 ```
 
-> **首行为全局参数行**：所有后续执行/评估待办共享这些参数，避免重复填写。人在回路干涉时**必须延续首行的session_id**。
+> **守则行在最前面**——AI自己输出了就会遵守，比文档里反复强调更有效。全局参数行只放session_id和ai_app_type（api_url/token每次脚本调用自带，main_window_id随进程变化）。人在回路干涉时**必须延续首行的session_id**。
 
 ---
 
@@ -617,12 +628,7 @@ curl -X POST \
 
 **原因分析**：
 - Windows应用有主窗口和子窗口，它们的window_id不同
-- **优先使用子窗口ID操作**，大部分应用的输入/按键/运动类操作需要子窗口才能响应
-- 操作类型与窗口对应关系：
-  - 点击类（click/long_press/right_click）：主窗口通常可工作
-  - 输入类（input_text）：通常需要子窗口
-  - 按键类（press_key）：通常需要子窗口
-  - 运动类（swipe/scroll）：通常需要子窗口
+- **优先使用子窗口ID操作**，大部分应用的操作需要子窗口才能响应
 
 **解决方案**：
 1. 调用 `get_window_list` 时使用 `include_children=true` 获取所有窗口
@@ -641,7 +647,7 @@ curl -X POST \
 
 | 参数 | 当前值 | 问题 | 调整方案 |
 |------|--------|------|----------|
-| `density` | 5.0 | 网格太宽，不好判断 | 减小（如改为3） |
+| `density` | 5.0 | 网格太宽，不好判断坐标 | 减小（如改为3） |
 | `opacity` | 50 | 网格遮挡内容 | 降低（如改为30） |
 | `color` | "#00FF00" | 颜色与内容冲突 | 更换（如改为#FF0000） |
 | `number_density` | 2 | 数字太少，定位困难 | 减小（如改为1） |
