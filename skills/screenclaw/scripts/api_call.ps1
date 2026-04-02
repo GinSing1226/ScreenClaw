@@ -77,8 +77,12 @@ if (-not $scriptParams.ContainsKey('session_id')) {
     exit 1
 }
 if (-not $scriptParams.ContainsKey('main_window_id')) {
-    Write-Error "错误：main_window_id 参数必须显式传入。从get_window_list获取"
-    exit 1
+    # get_window_list 和 wait 不需要 main_window_id
+    $exemptEndpoints = @('get_window_list', 'wait')
+    if ($Endpoint -notin $exemptEndpoints) {
+        Write-Error "错误：main_window_id 参数必须显式传入。从get_window_list获取"
+        exit 1
+    }
 }
 
 $body = @{

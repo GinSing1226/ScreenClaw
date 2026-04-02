@@ -162,7 +162,7 @@ python scripts/api_call.py <api_url> <token> <endpoint> ai_app_type=<值> sessio
 **示例：**
 ```bash
 # 获取窗口列表（建议始终带include_children=true + children_filter=titled）
-python scripts/api_call.py http://192.168.10.190:12261 TOKEN get_window_list ai_app_type=claude_code session_id=wechat_20260330_143025 main_window_id=123456 keyword=feishu include_children=true children_filter=titled
+python scripts/api_call.py http://192.168.10.190:12261 TOKEN get_window_list ai_app_type=claude_code session_id=wechat_20260330_143025 keyword=feishu include_children=true children_filter=titled
 ```
 
 **截图API调用（专用）**：
@@ -579,7 +579,7 @@ curl -X GET \
 curl -X POST \
   -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -H "Content-Type: application/json" \
-  -d '{"ai_app_type": "claude_code", "session_id": "test", "main_window_id": 12345, "keyword": ""}' \
+  -d '{"ai_app_type": "claude_code", "session_id": "test", "keyword": ""}' \
   "http://localhost:12261/api/get_window_list"
 ```
 

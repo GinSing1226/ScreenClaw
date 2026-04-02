@@ -12,7 +12,7 @@ class BaseRequest(BaseModel):
     ai_app_type: str = Field(..., description="AI应用类型")
     session_id: str = Field(..., description="会话ID")
     window_id: int = Field(..., description="窗口句柄")
-    main_window_id: int = Field(..., description="主窗口ID（必填，用于恢复窗口）")
+    main_window_id: Optional[int] = Field(default=None, description="主窗口ID（可选，用于恢复最小化/隐藏的窗口）")
 
 
 # ============ 截图相关 ============
@@ -50,7 +50,6 @@ class ClickRequest(BaseRequest):
         default="background",
         description="操作方式: background(无感,不抢鼠标) / hijack(劫持,短暂接管,需确认)"
     )
-    main_window_id: int = Field(..., description="主窗口ID（必填，用于恢复窗口后查找子窗口）")
 
 
 class LongPressRequest(ClickRequest):

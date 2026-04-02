@@ -85,8 +85,11 @@ if [[ "$HAS_SESSION_ID" == "false" ]]; then
     exit 1
 fi
 if [[ "$HAS_MAIN_WINDOW_ID" == "false" ]]; then
-    echo "错误：main_window_id 参数必须显式传入。从get_window_list获取"
-    exit 1
+    # get_window_list 和 wait 不需要 main_window_id
+    if [[ "$ENDPOINT" != "get_window_list" && "$ENDPOINT" != "wait" ]]; then
+        echo "错误：main_window_id 参数必须显式传入。从get_window_list获取"
+        exit 1
+    fi
 fi
 
 # 构建JSON

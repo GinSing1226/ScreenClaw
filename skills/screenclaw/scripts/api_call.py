@@ -86,8 +86,11 @@ def main():
         print("错误：session_id 参数必须显式传入。格式：app_name_YYYYMMDD_HHMMSS")
         sys.exit(1)
     if 'main_window_id' not in params:
-        print("错误：main_window_id 参数必须显式传入。从get_window_list获取")
-        sys.exit(1)
+        # get_window_list 和 wait 不需要 main_window_id
+        exempt_endpoints = {'get_window_list', 'wait'}
+        if endpoint not in exempt_endpoints:
+            print("错误：main_window_id 参数必须显式传入。从get_window_list获取")
+            sys.exit(1)
 
     # 构建body
     body = {
