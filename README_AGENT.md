@@ -31,7 +31,7 @@ npx skills add https://github.com/GinSing1226/ScreenClaw
 
 Create/update config file at skill location:
 ```
-{skill-dir}/reference/config.json
+{skill-dir}/reference/config.md
 ```
 
 Config format:
@@ -83,7 +83,6 @@ Just Steps 1-4 above. No additional config needed.
 |-------|----------|
 | **Product Features** | [README.md](./README.md) — What ScreenClaw can do |
 | **Skill Usage** | [skills/screenclaw/SKILL.md](./skills/screenclaw/SKILL.md) — Complete API reference and methodology |
-| **Methodology** | [skills/screenclaw/SKILL.md](./skills/screenclaw/SKILL.md#方法论) — 5-layer visual thinking chain for accurate UI automation |
 | **API Details** | [skills/screenclaw/reference/api/](./skills/screenclaw/reference/api/) — Individual API documentation |
 | **Scenario Templates** | [skills/screenclaw/reference/scenarios/](./skills/screenclaw/reference/scenarios/) — Pre-built workflows |
 

@@ -136,8 +136,11 @@ curl -X POST http://127.0.0.1:12261/api/get_window_list \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -d '{
+    "ai_app_type": "claude_code",
+    "session_id": "session-123",
     "keyword": "notepad",
-    "include_children": true
+    "include_children": true,
+    "children_filter": "titled"
   }'
 ```
 
@@ -156,6 +159,13 @@ curl -X POST http://127.0.0.1:12261/api/screenshot \
       "density": 5.0,
       "opacity": 50,
       "color": "#00FF00"
+    },
+    "coordinate": {
+      "number_density": 2,
+      "number_decimal": 0,
+      "number_size": 8,
+      "number_color": "#00FF00",
+      "number_opacity": 100
     }
   }'
 ```
@@ -183,6 +193,8 @@ curl -X POST http://127.0.0.1:12261/api/long_press \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -d '{
+    "ai_app_type": "claude_code",
+    "session_id": "session-123",
     "window_id": 1001,
     "x": 50.0,
     "y": 50.0,
@@ -198,6 +210,8 @@ curl -X POST http://127.0.0.1:12261/api/swipe \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -d '{
+    "ai_app_type": "claude_code",
+    "session_id": "session-123",
     "window_id": 1001,
     "start_x": 50.0,
     "start_y": 80.0,
@@ -214,6 +228,8 @@ curl -X POST http://127.0.0.1:12261/api/scroll \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -d '{
+    "ai_app_type": "claude_code",
+    "session_id": "session-123",
     "window_id": 1001,
     "x": 50.0,
     "y": 50.0,
@@ -229,6 +245,8 @@ curl -X POST http://127.0.0.1:12261/api/right_click \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -d '{
+    "ai_app_type": "claude_code",
+    "session_id": "session-123",
     "window_id": 1001,
     "x": 50.0,
     "y": 50.0,
@@ -243,7 +261,10 @@ curl -X POST http://127.0.0.1:12261/api/hover \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -d '{
+    "ai_app_type": "claude_code",
+    "session_id": "session-123",
     "window_id": 1001,
+    "main_window_id": 1001,
     "x": 50.0,
     "y": 50.0,
     "duration_ms": 500,
@@ -258,10 +279,13 @@ curl -X POST http://127.0.0.1:12261/api/input_text \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -d '{
+    "ai_app_type": "claude_code",
+    "session_id": "session-123",
     "window_id": 1001,
     "x": 50.0,
     "y": 50.0,
     "text": "Hello World\n",
+    "newline_key": "shift enter",
     "action_method": "hijack"
   }'
 ```
@@ -273,8 +297,13 @@ curl -X POST http://127.0.0.1:12261/api/press_key \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -d '{
+    "ai_app_type": "claude_code",
+    "session_id": "session-123",
     "window_id": 1001,
     "key": "ctrl c",
+    "x": 55.0,
+    "y": 65.0,
+    "duration_ms": 0,
     "action_method": "background"
   }'
 ```
@@ -286,6 +315,8 @@ curl -X POST http://127.0.0.1:12261/api/wait \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -d '{
+    "ai_app_type": "claude_code",
+    "session_id": "session-123",
     "window_id": 1001,
     "duration_ms": 1000
   }'
@@ -298,7 +329,10 @@ curl -X POST http://127.0.0.1:12261/api/batch \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -d '{
+    "ai_app_type": "claude_code",
+    "session_id": "session-123",
     "window_id": 1001,
+    "main_window_id": 1001,
     "instructions": [
       {"action": "click", "params": {"x": 50, "y": 35, "action_method": "background"}},
       {"action": "wait", "params": {"duration_ms": 200}},
