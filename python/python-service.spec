@@ -8,6 +8,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ('app', 'app'),  # 包含整个 app 目录
+        ('embed_python', 'embed_python'),  # 嵌入式 Python 解释器（子进程隔离用）
         ('../src-wincapture/bin/Release/net9.0-windows10.0.22621.0/win-x64/publish/screenclaw-wincapture-service.exe', 'wgc-service'),  # C# WGC 截图服务 (自包含)
     ],
     hiddenimports=[

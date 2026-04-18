@@ -129,7 +129,7 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
     # ============ delegated 直接操作（无窗口操控） ============
 
     def _delegated_click(self, hwnd: int, virtual_x: int, virtual_y: int) -> bool:
-        """Delegated 点击 - 激活窗口 + SendMessageTimeout 点击（防卡死），不恢复状态"""
+        """Delegated 点击 - 激活窗口 + mouse_event 硬件级点击，不恢复状态"""
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
 
@@ -140,57 +140,56 @@ virtual_y = {virtual_y}
 # 计算屏幕坐标
 screen_x, screen_y = win32gui.ClientToScreen(hwnd, (virtual_x, virtual_y))
 
-# 激活目标窗口
+# 激活目标窗口（先检查窗口状态）
 main_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
+
+# 仅在窗口最小化或隐藏时才恢复
+if win32gui.IsIconic(main_hwnd):
+    win32gui.ShowWindow(main_hwnd, win32con.SW_RESTORE)
+    time.sleep(0.2)
+elif not win32gui.IsWindowVisible(main_hwnd):
+    win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+    time.sleep(0.1)
+
+# 先强制释放可能的鼠标捕获（防止游戏处于拖拽/捕获状态导致死锁）
+try:
+    ctypes.windll.user32.ReleaseCapture()
+except:
+    pass
+
 target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
 current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
 ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
-win32gui.SetForegroundWindow(main_hwnd)
+
+# 激活窗口，带异常处理
+try:
+    win32gui.SetForegroundWindow(main_hwnd)
+except Exception:
+    try:
+        win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+        ctypes.windll.user32.BringWindowToTop(main_hwnd)
+    except Exception:
+        pass
+
 time.sleep(0.3)
 
 win32api.SetCursorPos((screen_x, screen_y))
 time.sleep(0.3)
 
-# 使用 SendMessageTimeout 替代 SendMessage，防止用户抢夺控制权导致卡死
-SMTO_BLOCK = 0x0001
-timeout_ms = 5000
-result_ptr = ctypes.c_ulong()
-
-lParam = win32api.MAKELONG(virtual_x, virtual_y)
-
-# 鼠标按下
-send_result_down = ctypes.windll.user32.SendMessageTimeoutW(
-    hwnd, win32con.WM_LBUTTONDOWN, 0x0001, lParam,
-    SMTO_BLOCK, timeout_ms, ctypes.byref(result_ptr)
-)
-
-if send_result_down == 0:
-    print("[ERROR] Execution timeout, possibly interrupted by user operation")
-    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
-    import sys
-    sys.exit(1)
-
+# 使用 mouse_event 硬件级点击（与 hijack 一致）
+MOUSEEVENTF_LEFTDOWN = 0x0002
+MOUSEEVENTF_LEFTUP = 0x0004
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
 time.sleep(0.05)
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
 
-# 鼠标释放
-send_result_up = ctypes.windll.user32.SendMessageTimeoutW(
-    hwnd, win32con.WM_LBUTTONUP, 0, lParam,
-    SMTO_BLOCK, timeout_ms, ctypes.byref(result_ptr)
-)
-
-if send_result_up == 0:
-    print("[ERROR] Execution timeout, possibly interrupted by user operation")
-    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
-    import sys
-    sys.exit(1)
-
-# 不恢复状态，仅断开线程绑定
+# 断开线程绑定
 ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
 '''
-        return self._run_subprocess(code, timeout=5)
+        return self._run_subprocess(code, timeout=15)
 
     def _delegated_right_click(self, hwnd: int, virtual_x: int, virtual_y: int) -> bool:
-        """Delegated 右键 - 激活窗口 + SendMessageTimeout 右键（防卡死），不恢复状态"""
+        """Delegated 右键 - 激活窗口 + mouse_event 硬件级右键，不恢复状态"""
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
 
@@ -206,51 +205,36 @@ main_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
 target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
 current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
 ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
-win32gui.SetForegroundWindow(main_hwnd)
+
+# 激活窗口，带异常处理
+try:
+    win32gui.SetForegroundWindow(main_hwnd)
+except Exception:
+    try:
+        win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+        ctypes.windll.user32.BringWindowToTop(main_hwnd)
+    except Exception:
+        pass
+
 time.sleep(0.3)
 
 win32api.SetCursorPos((screen_x, screen_y))
 time.sleep(0.3)
 
-# 使用 SendMessageTimeout 替代 SendMessage，防止用户抢夺控制权导致卡死
-SMTO_BLOCK = 0x0001
-timeout_ms = 5000
-lParam = win32api.MAKELONG(virtual_x, virtual_y)
-result_ptr = ctypes.c_ulong()
-
-# 右键按下
-send_result_down = ctypes.windll.user32.SendMessageTimeoutW(
-    hwnd, win32con.WM_RBUTTONDOWN, 0x0002, lParam,
-    SMTO_BLOCK, timeout_ms, ctypes.byref(result_ptr)
-)
-
-if send_result_down == 0:
-    print("[ERROR] Execution timeout, possibly interrupted by user operation")
-    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
-    import sys
-    sys.exit(1)
-
+# 使用 mouse_event 硬件级右键（与 hijack 一致）
+MOUSEEVENTF_RIGHTDOWN = 0x0008
+MOUSEEVENTF_RIGHTUP = 0x0010
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0)
 time.sleep(0.05)
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0)
 
-# 右键释放
-send_result_up = ctypes.windll.user32.SendMessageTimeoutW(
-    hwnd, win32con.WM_RBUTTONUP, 0, lParam,
-    SMTO_BLOCK, timeout_ms, ctypes.byref(result_ptr)
-)
-
-if send_result_up == 0:
-    print("[ERROR] Execution timeout, possibly interrupted by user operation")
-    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
-    import sys
-    sys.exit(1)
-
-# 不恢复状态，仅断开线程绑定
+# 断开线程绑定
 ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
 '''
-        return self._run_subprocess(code, timeout=5)
+        return self._run_subprocess(code, timeout=15)
 
     def _delegated_long_press(self, hwnd: int, virtual_x: int, virtual_y: int, duration_ms: int) -> bool:
-        """Delegated 长按 - 激活窗口 + SendMessageTimeout 长按（防卡死），不恢复状态"""
+        """Delegated 长按 - 激活窗口 + mouse_event 硬件级长按，不恢复状态"""
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
 
@@ -267,53 +251,40 @@ main_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
 target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
 current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
 ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
-win32gui.SetForegroundWindow(main_hwnd)
+
+# 激活窗口，带异常处理
+try:
+    win32gui.SetForegroundWindow(main_hwnd)
+except Exception:
+    try:
+        win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+        ctypes.windll.user32.BringWindowToTop(main_hwnd)
+    except Exception:
+        pass
+
 time.sleep(0.3)
 
 win32api.SetCursorPos((screen_x, screen_y))
 time.sleep(0.3)
 
-# 使用 SendMessageTimeout 替代 SendMessage，防止用户抢夺控制权导致卡死
-SMTO_BLOCK = 0x0001
-timeout_ms = 5000
-lParam = win32api.MAKELONG(virtual_x, virtual_y)
-result_ptr = ctypes.c_ulong()
-
-# 鼠标按下（长按开始）
-send_result_down = ctypes.windll.user32.SendMessageTimeoutW(
-    hwnd, win32con.WM_LBUTTONDOWN, 0x0001, lParam,
-    SMTO_BLOCK, timeout_ms, ctypes.byref(result_ptr)
-)
-
-if send_result_down == 0:
-    print("[ERROR] Execution timeout, possibly interrupted by user operation")
-    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
-    import sys
-    sys.exit(1)
+# 使用 mouse_event 硬件级长按（与 hijack 一致）
+MOUSEEVENTF_LEFTDOWN = 0x0002
+MOUSEEVENTF_LEFTUP = 0x0004
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
 
 # 长按保持
 time.sleep(duration_ms / 1000)
 
-# 鼠标释放（长按结束）
-send_result_up = ctypes.windll.user32.SendMessageTimeoutW(
-    hwnd, win32con.WM_LBUTTONUP, 0, lParam,
-    SMTO_BLOCK, timeout_ms, ctypes.byref(result_ptr)
-)
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
 
-if send_result_up == 0:
-    print("[ERROR] Execution timeout, possibly interrupted by user operation")
-    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
-    import sys
-    sys.exit(1)
-
-# 不恢复状态，仅断开线程绑定
+# 断开线程绑定
 ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
 '''
-        return self._run_subprocess(code, timeout=max(10, duration_ms / 1000 + 5))
+        return self._run_subprocess(code, timeout=max(15, duration_ms / 1000 + 15))
 
     def _delegated_swipe(self, hwnd: int, virtual_sx: int, virtual_sy: int,
                        virtual_ex: int, virtual_ey: int) -> bool:
-        """Delegated 滑动 - 激活窗口 + SendMessageTimeout 拖拽（防卡死），不恢复状态"""
+        """Delegated 滑动 - 激活窗口 + mouse_event 硬件级拖拽，不恢复状态"""
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
 
@@ -332,30 +303,26 @@ main_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
 target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
 current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
 ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
-win32gui.SetForegroundWindow(main_hwnd)
+
+# 激活窗口，带异常处理
+try:
+    win32gui.SetForegroundWindow(main_hwnd)
+except Exception:
+    try:
+        win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+        ctypes.windll.user32.BringWindowToTop(main_hwnd)
+    except Exception:
+        pass
+
 time.sleep(0.3)
 
 win32api.SetCursorPos((screen_sx, screen_sy))
 time.sleep(0.1)
 
-# 使用 SendMessageTimeout 替代 SendMessage，防止用户抢夺控制权导致卡死
-SMTO_BLOCK = 0x0001
-timeout_ms = 5000
-result_ptr = ctypes.c_ulong()
-
-# 鼠标按下
-lParam_s = win32api.MAKELONG(virtual_sx, virtual_sy)
-send_result_down = ctypes.windll.user32.SendMessageTimeoutW(
-    hwnd, win32con.WM_LBUTTONDOWN, 0x0001, lParam_s,
-    SMTO_BLOCK, timeout_ms, ctypes.byref(result_ptr)
-)
-
-if send_result_down == 0:
-    print("[ERROR] Execution timeout, possibly interrupted by user operation")
-    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
-    import sys
-    sys.exit(1)
-
+# 使用 mouse_event 硬件级拖拽（与 hijack 一致）
+MOUSEEVENTF_LEFTDOWN = 0x0002
+MOUSEEVENTF_LEFTUP = 0x0004
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
 time.sleep(0.05)
 
 # 分步移动
@@ -364,44 +331,21 @@ duration = 0.3
 step_delay = duration / steps
 for i in range(1, steps + 1):
     progress = i / steps
-    cx = int(virtual_sx + (virtual_ex - virtual_sx) * progress)
-    cy = int(virtual_sy + (virtual_ey - virtual_sy) * progress)
-    lParam_move = win32api.MAKELONG(cx, cy)
-    send_result = ctypes.windll.user32.SendMessageTimeoutW(
-        hwnd, win32con.WM_MOUSEMOVE, 0x0001, lParam_move,
-        SMTO_BLOCK, timeout_ms, ctypes.byref(result_ptr)
-    )
-    if send_result == 0:
-        print("[ERROR] Execution timeout, possibly interrupted by user operation")
-        ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
-        import sys
-        sys.exit(1)
     screen_cx = int(screen_sx + (screen_ex - screen_sx) * progress)
     screen_cy = int(screen_sy + (screen_ey - screen_sy) * progress)
     win32api.SetCursorPos((screen_cx, screen_cy))
     time.sleep(step_delay)
 
-# 鼠标释放
-lParam_e = win32api.MAKELONG(virtual_ex, virtual_ey)
-send_result_up = ctypes.windll.user32.SendMessageTimeoutW(
-    hwnd, win32con.WM_LBUTTONUP, 0, lParam_e,
-    SMTO_BLOCK, timeout_ms, ctypes.byref(result_ptr)
-)
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
 
-if send_result_up == 0:
-    print("[ERROR] Execution timeout, possibly interrupted by user operation")
-    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
-    import sys
-    sys.exit(1)
-
-# 不恢复状态，仅断开线程绑定
+# 断开线程绑定
 ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
 '''
         return self._run_subprocess(code, timeout=15)
 
     def _delegated_drag(self, hwnd: int, virtual_sx: int, virtual_sy: int,
                         virtual_ex: int, virtual_ey: int, duration_ms: int = 500) -> bool:
-        """Delegated 拖拽 - 激活窗口 + SendMessageTimeout 拖拽（防卡死） + duration_ms 参数化，不恢复状态"""
+        """Delegated 拖拽 - 激活窗口 + mouse_event 硬件级拖拽，不恢复状态"""
         duration = duration_ms / 1000.0
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
@@ -422,30 +366,26 @@ main_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
 target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
 current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
 ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
-win32gui.SetForegroundWindow(main_hwnd)
+
+# 激活窗口，带异常处理
+try:
+    win32gui.SetForegroundWindow(main_hwnd)
+except Exception:
+    try:
+        win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+        ctypes.windll.user32.BringWindowToTop(main_hwnd)
+    except Exception:
+        pass
+
 time.sleep(0.3)
 
 win32api.SetCursorPos((screen_sx, screen_sy))
 time.sleep(0.1)
 
-# 使用 SendMessageTimeout 替代 SendMessage，防止用户抢夺控制权导致卡死
-SMTO_BLOCK = 0x0001
-timeout_ms = 5000
-result_ptr = ctypes.c_ulong()
-
-# 鼠标按下
-lParam_s = win32api.MAKELONG(virtual_sx, virtual_sy)
-send_result_down = ctypes.windll.user32.SendMessageTimeoutW(
-    hwnd, win32con.WM_LBUTTONDOWN, 0x0001, lParam_s,
-    SMTO_BLOCK, timeout_ms, ctypes.byref(result_ptr)
-)
-
-if send_result_down == 0:
-    print("[ERROR] Execution timeout, possibly interrupted by user operation")
-    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
-    import sys
-    sys.exit(1)
-
+# 使用 mouse_event 硬件级拖拽（与 hijack 一致）
+MOUSEEVENTF_LEFTDOWN = 0x0002
+MOUSEEVENTF_LEFTUP = 0x0004
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
 time.sleep(0.05)
 
 # 分步移动
@@ -453,40 +393,17 @@ steps = 10
 step_delay = duration / steps
 for i in range(1, steps + 1):
     progress = i / steps
-    cx = int(virtual_sx + (virtual_ex - virtual_sx) * progress)
-    cy = int(virtual_sy + (virtual_ey - virtual_sy) * progress)
-    lParam_move = win32api.MAKELONG(cx, cy)
-    send_result = ctypes.windll.user32.SendMessageTimeoutW(
-        hwnd, win32con.WM_MOUSEMOVE, 0x0001, lParam_move,
-        SMTO_BLOCK, timeout_ms, ctypes.byref(result_ptr)
-    )
-    if send_result == 0:
-        print("[ERROR] Execution timeout, possibly interrupted by user operation")
-        ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
-        import sys
-        sys.exit(1)
     screen_cx = int(screen_sx + (screen_ex - screen_sx) * progress)
     screen_cy = int(screen_sy + (screen_ey - screen_sy) * progress)
     win32api.SetCursorPos((screen_cx, screen_cy))
     time.sleep(step_delay)
 
-# 鼠标释放
-lParam_e = win32api.MAKELONG(virtual_ex, virtual_ey)
-send_result_up = ctypes.windll.user32.SendMessageTimeoutW(
-    hwnd, win32con.WM_LBUTTONUP, 0, lParam_e,
-    SMTO_BLOCK, timeout_ms, ctypes.byref(result_ptr)
-)
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
 
-if send_result_up == 0:
-    print("[ERROR] Execution timeout, possibly interrupted by user operation")
-    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
-    import sys
-    sys.exit(1)
-
-# 不恢复状态，仅断开线程绑定
+# 断开线程绑定
 ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
 '''
-        timeout = max(15, int(duration_ms / 1000) + 10)
+        timeout = max(20, int(duration_ms / 1000) + 15)
         return self._run_subprocess(code, timeout=timeout)
 
     def _delegated_mouse_move(self, hwnd: int, delta_x: int, delta_y: int,
@@ -532,7 +449,7 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
         return self._run_subprocess(code, timeout=timeout)
 
     def _delegated_scroll(self, hwnd: int, virtual_x: int, virtual_y: int, delta: int) -> bool:
-        """Delegated 滚动 - 激活窗口 + SendMessageTimeout 滚轮（防卡死），不恢复状态"""
+        """Delegated 滚动 - 激活窗口 + mouse_event 硬件级滚轮，不恢复状态"""
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
 
@@ -549,34 +466,30 @@ main_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
 target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
 current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
 ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
-win32gui.SetForegroundWindow(main_hwnd)
+
+# 激活窗口，带异常处理
+try:
+    win32gui.SetForegroundWindow(main_hwnd)
+except Exception:
+    try:
+        win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+        ctypes.windll.user32.BringWindowToTop(main_hwnd)
+    except Exception:
+        pass
+
 time.sleep(0.3)
 
 win32api.SetCursorPos((screen_x, screen_y))
 time.sleep(0.1)
 
-# 使用 SendMessageTimeout 替代 SendMessage，防止用户抢夺控制权导致卡死
-SMTO_BLOCK = 0x0001
-timeout_ms = 5000
-result_ptr = ctypes.c_ulong()
+# 使用 mouse_event 硬件级滚轮（与 hijack 一致，兼容所有应用）
+MOUSEEVENTF_WHEEL = 0x0800
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, delta, 0)
 
-wParam = win32api.MAKELONG(0, delta)
-lParam = win32api.MAKELONG(virtual_x, virtual_y)
-send_result = ctypes.windll.user32.SendMessageTimeoutW(
-    hwnd, win32con.WM_MOUSEWHEEL, wParam, lParam,
-    SMTO_BLOCK, timeout_ms, ctypes.byref(result_ptr)
-)
-
-if send_result == 0:
-    print("[ERROR] Execution timeout, possibly interrupted by user operation")
-    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
-    import sys
-    sys.exit(1)
-
-# 不恢复状态，仅断开线程绑定
+# 断开线程绑定
 ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
 '''
-        return self._run_subprocess(code, timeout=5)
+        return self._run_subprocess(code, timeout=15)
 
     def _delegated_hover(self, hwnd: int, virtual_x: int, virtual_y: int,
                        duration_ms: int, semi_blocking: bool = False) -> bool:
@@ -673,7 +586,7 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
     def _delegated_key_press(self, hwnd: int, key: str,
                            virtual_x: int = None, virtual_y: int = None,
                            duration_ms: int = 0, non_blocking: bool = False) -> bool:
-        """Delegated 按键 - 激活窗口 + SendMessageTimeout 按键（防卡死），不恢复状态"""
+        """Delegated 按键 - 激活窗口 + keybd_event 硬件级按键，不恢复状态"""
         parsed = self._parse_keys(key)
         if parsed is None:
             return False
@@ -681,29 +594,18 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
         modifiers, main_vk = parsed
         all_vks = modifiers + [main_vk]
 
-        # 构建 SendMessageTimeout 按键代码，防止用户抢夺控制权导致卡死
-        SMTO_BLOCK = 0x0001
-        SMTO_ABORTIFHUNG = 0x0002
-        timeout_ms = 5000
-
-        mod_press_lines = []
-        mod_release_lines = []
-        mod_vk_list = []
-        for vk in modifiers:
+        # 构建 keybd_event 硬件级按键代码（与 hijack 一致）
+        press_lines = []
+        release_lines = []
+        for vk in all_vks:
             scan = ctypes.windll.user32.MapVirtualKeyW(vk, 0)
-            lparam_down = win32api.MAKELONG(1, (scan << 16) | 1)
-            lparam_up = win32api.MAKELONG(1, (scan << 16) | 1 | 0xC0)
-            mod_press_lines.append(f'send_result_{vk}_down = ctypes.windll.user32.SendMessageTimeoutW(hwnd, win32con.WM_KEYDOWN, {vk}, {lparam_down}, SMTO_BLOCK, {timeout_ms}, ctypes.byref(result_ptr))')
-            mod_release_lines.append(f'send_result_{vk}_up = ctypes.windll.user32.SendMessageTimeoutW(hwnd, win32con.WM_KEYUP, {vk}, {lparam_up}, SMTO_BLOCK, {timeout_ms}, ctypes.byref(result_ptr))')
-            mod_vk_list.append(vk)
+            press_lines.append(f'ctypes.windll.user32.keybd_event({vk}, {scan}, 0, 0)')
+        for vk in reversed(all_vks):
+            scan = ctypes.windll.user32.MapVirtualKeyW(vk, 0)
+            release_lines.append(f'ctypes.windll.user32.keybd_event({vk}, {scan}, 2, 0)')
 
-        main_scan = ctypes.windll.user32.MapVirtualKeyW(main_vk, 0)
-        main_lparam_down = win32api.MAKELONG(1, (main_scan << 16) | 1)
-        main_lparam_up = win32api.MAKELONG(1, (main_scan << 16) | 1 | 0xC0)
-
-        mod_press = '\n    '.join(mod_press_lines)
-        mod_release = '\n    '.join(reversed(mod_release_lines))
-        mod_vk_str = str(mod_vk_list).replace('[', '{').replace(']', '}').replace(' ', '')
+        all_press = '\n'.join(press_lines)
+        all_release = '\n'.join(release_lines)
 
         hold_sleep = f'time.sleep({duration_ms} / 1000.0)' if duration_ms > 0 else ''
 
@@ -714,26 +616,11 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
 screen_x, screen_y = win32gui.ClientToScreen(hwnd, ({virtual_x}, {virtual_y}))
 win32api.SetCursorPos((screen_x, screen_y))
 time.sleep(0.3)
-lParam = win32api.MAKELONG({virtual_x}, {virtual_y})
-send_result_click_down = ctypes.windll.user32.SendMessageTimeoutW(
-    hwnd, win32con.WM_LBUTTONDOWN, 0x0001, lParam,
-    SMTO_BLOCK, {timeout_ms}, ctypes.byref(result_ptr)
-)
-if send_result_click_down == 0:
-    print("[ERROR] Execution timeout, possibly interrupted by user operation")
-    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
-    import sys
-    sys.exit(1)
+MOUSEEVENTF_LEFTDOWN = 0x0002
+MOUSEEVENTF_LEFTUP = 0x0004
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
 time.sleep(0.05)
-send_result_click_up = ctypes.windll.user32.SendMessageTimeoutW(
-    hwnd, win32con.WM_LBUTTONUP, 0, lParam,
-    SMTO_BLOCK, {timeout_ms}, ctypes.byref(result_ptr)
-)
-if send_result_click_up == 0:
-    print("[ERROR] Execution timeout, possibly interrupted by user operation")
-    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
-    import sys
-    sys.exit(1)
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
 time.sleep(0.1)
 '''
 
@@ -747,52 +634,33 @@ main_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
 target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
 current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
 ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
-win32gui.SetForegroundWindow(main_hwnd)
+
+# 激活窗口，带异常处理
+try:
+    win32gui.SetForegroundWindow(main_hwnd)
+except Exception:
+    try:
+        win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+        ctypes.windll.user32.BringWindowToTop(main_hwnd)
+    except Exception:
+        pass
+
 time.sleep(0.3)
 
 {click_code}
 
-# 初始化 SendMessageTimeout 参数
-SMTO_BLOCK = 0x0001
-timeout_ms = {timeout_ms}
-result_ptr = ctypes.c_ulong()
-
-# 按下修饰键
-{mod_press}
-time.sleep(0.05)
-
-# 按下主键
-send_result_main_down = ctypes.windll.user32.SendMessageTimeoutW(
-    hwnd, win32con.WM_KEYDOWN, {main_vk}, {main_lparam_down},
-    SMTO_BLOCK, timeout_ms, ctypes.byref(result_ptr)
-)
-if send_result_main_down == 0:
-    print("[ERROR] Execution timeout, possibly interrupted by user operation")
-    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
-    import sys
-    sys.exit(1)
+# 按下所有键
+{all_press}
 time.sleep(0.05)
 {hold_sleep}
-# 释放主键
-send_result_main_up = ctypes.windll.user32.SendMessageTimeoutW(
-    hwnd, win32con.WM_KEYUP, {main_vk}, {main_lparam_up},
-    SMTO_BLOCK, timeout_ms, ctypes.byref(result_ptr)
-)
-if send_result_main_up == 0:
-    print("[ERROR] Execution timeout, possibly interrupted by user operation")
-    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
-    import sys
-    sys.exit(1)
+# 释放所有键
+{all_release}
 time.sleep(0.05)
 
-# 释放修饰键
-{mod_release}
-time.sleep(0.05)
-
-# 不恢复状态，仅断开线程绑定
+# 断开线程绑定
 ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
 '''
-        timeout = max(5, duration_ms / 1000 + 5) if duration_ms > 0 else 5
+        timeout = max(15, duration_ms / 1000 + 15) if duration_ms > 0 else 15
         return self._run_subprocess(code, timeout=int(timeout), non_blocking=non_blocking)
 
     # ============ 原有公共方法（修改路由） ============
@@ -801,22 +669,6 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
               virtual_x: int, virtual_y: int,
               action_method: str = "background") -> InjectResult:
         effective = self._effective_method(action_method)
-
-        # 添加调试日志
-        import os
-        from datetime import datetime
-        try:
-            if getattr(sys, 'frozen', False):
-                log_dir = os.path.dirname(sys.executable)
-            else:
-                log_dir = os.path.dirname(os.path.abspath(__file__))
-            log_file = os.path.join(log_dir, 'logs', 'input_debug.log')
-            os.makedirs(os.path.dirname(log_file), exist_ok=True)
-            with open(log_file, 'a', encoding='utf-8') as f:
-                f.write(f"\n[{datetime.now()}] click() called: hwnd={hwnd}, action_method={action_method}, effective={effective}\n")
-                f.write(f"  coords: physical=({physical_x}, {physical_y}), virtual=({virtual_x}, {virtual_y})\n")
-        except Exception:
-            pass  # 静默失败
 
         if effective == "delegated":
             if self._delegated_click(hwnd, virtual_x, virtual_y):
@@ -1884,107 +1736,47 @@ time.sleep(0.05)
             semi_blocking: True 时启动子进程后等待 100ms（用于 hover 等待鼠标到位）
 
         Note:
-            打包环境(frozen)下直接在当前进程中执行代码，因为 sys.executable
-            指向的是打包后的exe，不支持 -c 参数。
+            打包环境(frozen)使用嵌入的 Python 解释器创建子进程。
+            开发环境使用 sys.executable。
         """
-        # 检测是否在打包环境中
         is_frozen = getattr(sys, 'frozen', False)
 
         if is_frozen:
-            # 打包环境：在当前进程中用 exec 执行，提供完整命名空间
-            import traceback
             import os
-            from datetime import datetime
+            python_exe = os.path.join(sys._MEIPASS, 'embed_python', 'python.exe')
+            env = os.environ.copy()
+            env['PYTHONPATH'] = os.path.join(sys._MEIPASS, 'embed_python')
+        else:
+            python_exe = sys.executable
+            env = None
 
-            # 准备日志文件路径
-            try:
-                if is_frozen:
-                    log_dir = os.path.dirname(sys.executable)
-                else:
-                    log_dir = os.path.dirname(os.path.abspath(__file__))
-                log_file = os.path.join(log_dir, 'logs', 'input_debug.log')
-                os.makedirs(os.path.dirname(log_file), exist_ok=True)
-            except Exception:
-                log_file = None
-
-            try:
-                # 为 exec 准备完整的命名空间，包含所有需要的模块
-                exec_namespace = {
-                    "__builtins__": __builtins__,
-                    "sys": sys,
-                    "win32gui": win32gui,
-                    "win32api": win32api,
-                    "win32con": win32con,
-                    "ctypes": ctypes,
-                    "time": time,
-                    "base64": base64,
-                }
-                # 尝试导入可选模块（clipboard 等）
-                try:
-                    exec_namespace["pyperclip"] = __import__('pyperclip')
-                except ImportError:
-                    pass
-                try:
-                    exec_namespace["win32clipboard"] = __import__('win32clipboard')
-                except ImportError:
-                    pass
-
-                # 记录执行开始
-                if log_file:
-                    with open(log_file, 'a', encoding='utf-8') as f:
-                        f.write(f"\n[{datetime.now()}] Executing code (frozen={is_frozen})\n")
-                        f.write(f"Code preview: {code[:200]}...\n")
-
-                exec(code, exec_namespace)
-
-                # 记录执行成功
-                if log_file:
-                    with open(log_file, 'a', encoding='utf-8') as f:
-                        f.write(f"[{datetime.now()}] Exec succeeded\n")
-
-                return True
-            except Exception as e:
-                error_msg = f"[input] exec error: {e}\n{traceback.format_exc()}"
-                # 尝试写入日志文件
-                if log_file:
-                    with open(log_file, 'a', encoding='utf-8') as f:
-                        f.write(f"[{datetime.now()}] {error_msg}\n")
-                        f.write(f"Code that failed:\n{code}\n")
-                # 同时尝试 print（可能在开发环境有用）
-                try:
-                    print(error_msg)
-                except Exception:
-                    pass
-                return False
-
-        # 开发环境：使用子进程执行
         try:
             if non_blocking or semi_blocking:
                 proc = subprocess.Popen(
-                    [sys.executable, '-c', code],
+                    [python_exe, '-c', code],
                     stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
+                    stderr=subprocess.DEVNULL,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    env=env
                 )
-                # 验证子进程是否成功启动
                 if semi_blocking:
-                    # 半阻塞：等待 200ms 让鼠标到位
                     time.sleep(0.2)
                     if proc.poll() is not None:
-                        # 子进程已经退出了，说明启动失败
                         return False
                 else:
-                    # 非阻塞：检查子进程是否启动
                     time.sleep(0.01)
                     if proc.poll() is not None:
                         return False
                 return True
             else:
                 result = subprocess.run(
-                    [sys.executable, '-c', code],
-                    capture_output=True, text=True, timeout=timeout
+                    [python_exe, '-c', code],
+                    capture_output=True, text=True, timeout=timeout,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    env=env
                 )
                 return result.returncode == 0
-        except Exception as e:
+        except Exception:
             return False
 
     def _client_to_screen(self, hwnd: int, x: int, y: int) -> Tuple[int, int]:
