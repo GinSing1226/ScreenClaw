@@ -125,9 +125,12 @@ def main():
         **params
     }
 
-    # 发送请求（requests.post(json=) 内部 json.dumps 自动处理中文编码）
+    # 发送请求
     try:
-        response = requests.post(url, headers=headers, json=body, timeout=30)
+        if endpoint == 'health':
+            response = requests.get(url, headers=headers, timeout=10)
+        else:
+            response = requests.post(url, headers=headers, json=body, timeout=30)
         response.raise_for_status()
         result = response.json()
     except requests.exceptions.RequestException as e:

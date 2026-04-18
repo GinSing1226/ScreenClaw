@@ -107,9 +107,15 @@ if [ ${#PARAMS[@]} -gt 0 ]; then
 fi
 JSON="$JSON}"
 
-# 发送请求（curl --data-binary 自动处理 UTF-8 中文编码）
-curl -s -X POST \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  --data-binary "$JSON" \
-  "$URL"
+# 发送请求
+if [[ "$ENDPOINT" == "health" ]]; then
+    curl -s -X GET \
+      -H "Authorization: Bearer $TOKEN" \
+      "$URL"
+else
+    curl -s -X POST \
+      -H "Authorization: Bearer $TOKEN" \
+      -H "Content-Type: application/json" \
+      --data-binary "$JSON" \
+      "$URL"
+fi

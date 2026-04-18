@@ -132,7 +132,7 @@ const i18n = createI18n({
           maxAdjustRetries: '自适应滚动最大调整次数。系统会自动调整滚动幅度以达到目标重叠，此参数控制最多调整几次。值越大越耐心，但耗时更长。建议 3-5',
           targetOverlapMin: '目标重叠下限（0.1-0.5）。相邻图片重叠量的理想范围下限。值越大确保有足够重叠可拼接，但调整次数可能增多',
           targetOverlapMax: '目标重叠上限（0.2-0.6）。相邻图片重叠量的理想范围上限。值越小减少截图数量，但重叠太少可能拼接失败',
-          stopThreshold: '停止阈值（0-0.01）。内容变化率低于此值时停止滚动，表示已到底部。值越大越容易判定到底，可能提前停止。建议 0.0001',
+          stopThreshold: '停止阈值（1~0.0001，即 100%~0.01%）。内容变化率低于此值时停止滚动，表示已到底部。值越大越容易判定到底，可能提前停止',
           scrollImageQuality: '输出图片质量（1-100）。值越大图片越清晰，但文件越大。建议 85-95',
           autoConfirmProcesses: '列表中的进程执行键盘/鼠标操作时，自动批准无需弹窗确认。部分应用（如 UWP 应用、微软商店应用）因系统限制无法获取进程名，此类应用无法加入自动同意列表',
           blockedProcesses: '列表中的进程禁止执行任何键盘/鼠标操作'
@@ -326,7 +326,7 @@ const i18n = createI18n({
           maxAdjustRetries: 'Maximum adaptive scroll adjustment attempts. System adjusts scroll amplitude to achieve target overlap. Higher values are more patient but take longer. Recommended: 3-5',
           targetOverlapMin: 'Target overlap lower bound (0.1-0.5). Ideal range lower bound for adjacent image overlap. Higher values ensure sufficient overlap but may increase adjustments',
           targetOverlapMax: 'Target overlap upper bound (0.2-0.6). Ideal range upper bound for adjacent image overlap. Lower values reduce screenshot count but too little may fail stitching',
-          stopThreshold: 'Stop threshold (0-0.01). Stop scrolling when content change rate falls below this, indicates bottom of page. Higher values detect bottom earlier but may stop prematurely. Recommended: 0.0001',
+          stopThreshold: 'Stop threshold (1~0.0001, i.e. 100%~0.01%). Stop scrolling when content change rate falls below this, indicates bottom of page. Higher values detect bottom earlier but may stop prematurely',
           scrollImageQuality: 'Output image quality (1-100). Higher values produce clearer images but larger files. Recommended: 85-95',
           autoConfirmProcesses: 'Processes in this list can perform keyboard/mouse operations without confirmation popup. Some apps (e.g. UWP, Microsoft Store apps) cannot be added due to system restrictions on retrieving process names',
           blockedProcesses: 'Processes in this list are prohibited from any keyboard/mouse operations'

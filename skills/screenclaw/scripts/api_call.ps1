@@ -138,7 +138,11 @@ $headers = @{
 }
 
 try {
-    $response = Invoke-RestMethod -Uri $url -Method Post -Headers $headers -Body $jsonBody
+    if ($Endpoint -eq 'health') {
+        $response = Invoke-RestMethod -Uri $url -Method Get -Headers $headers
+    } else {
+        $response = Invoke-RestMethod -Uri $url -Method Post -Headers $headers -Body $jsonBody
+    }
     $response | ConvertTo-Json -Depth 10
 } catch {
     Write-Error "API调用失败: $_"

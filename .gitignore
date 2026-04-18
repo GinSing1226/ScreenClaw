@@ -72,6 +72,9 @@ src-wincapture/bin/
 src-wincapture/obj/
 *.pdb
 
+# Embedded Python
+python/embed_python/
+
 # Log files
 *.log
 nul

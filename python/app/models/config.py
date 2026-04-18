@@ -66,7 +66,7 @@ class ScrollScreenshotConfig(BaseModel):
     """滚动长截图配置"""
     max_scrolls: int = 5                    # 最大滚动次数
     max_scroll_wait: float = 30.0          # 最大等待时间(秒)
-    max_timeout: int = 60                   # 最大超时时间(秒)
+    max_timeout: int = 180                  # 最大超时时间(秒)
     default_scroll_percent: float = 0.85    # 默认滚动幅度
     default_scroll_wait: float = 1.0        # 默认等待时间
     max_adjust_retries: int = 4             # 自适应滚动最大调整次数

@@ -1,6 +1,6 @@
 ---
 name: screenshot
-description: 截取窗口画面并绘制坐标网格，用于查看界面和定位元素
+description: 截取窗口画面并绘制坐标网格，用于定位元素坐标。也可以查看或分析单屏页面
 ---
 
 # screenshot - 截图
@@ -49,7 +49,7 @@ Content-Type: application/json
 | `color` | string | "#ff0000" | 网格颜色(HEX) | 与内容冲突时更换 |
 | `number_density` | int | 2 | 每隔几格显示坐标 | 数字太少时减小 |
 | `number_decimal` | int | 0 | 小数位数(0-4) | 需要精度时增大 |
-| `number_size` | int | 12 | 字体大小(4-64) | 看不清数字时增大 |
+| `number_size` | int | 14 | 字体大小(4-64) | 看不清数字时增大 |
 | `number_color` | string | "#ff0000" | 数字颜色(HEX) | 与背景冲突时更换 |
 | `number_opacity` | int | 100 | 数字透明度(0-100) | 不够清晰时增大 |
 
@@ -75,7 +75,7 @@ Content-Type: application/json
   "main_window_id": 1001,
   "coordinate_type": "grid",
   "grid": {"density": 10, "opacity": 60, "color": "#FF0000"},
-  "coordinate": {"number_size": 12, "number_density": 1}
+  "coordinate": {"number_size": 14, "number_density": 1}
 }
 ```
 

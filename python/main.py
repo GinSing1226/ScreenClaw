@@ -5,23 +5,6 @@ ScreenClaw Python Backend
 import os
 import sys
 
-# 启动诊断日志
-try:
-    if getattr(sys, 'frozen', False):
-        log_dir = os.path.dirname(sys.executable)
-    else:
-        log_dir = os.path.dirname(os.path.abspath(__file__))
-    log_file = os.path.join(log_dir, 'service_startup.log')
-    with open(log_file, 'w', encoding='utf-8') as f:
-        f.write(f"=== Service Startup ===\n")
-        f.write(f"sys.executable: {sys.executable}\n")
-        f.write(f"cwd: {os.getcwd()}\n")
-        f.write(f"frozen: {getattr(sys, 'frozen', False)}\n")
-        if hasattr(sys, '_MEIPASS'):
-            f.write(f"_MEIPASS: {sys._MEIPASS}\n")
-except Exception:
-    pass
-
 # 修复 PyInstaller console=False 时 sys.stderr/stdout 为 None 的问题
 # 必须在所有 import 之前执行
 if sys.stderr is None:

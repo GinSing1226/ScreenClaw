@@ -217,6 +217,8 @@ class ScrollScreenshotService:
         print(f"  可接受范围: [{MIN_OVERLAP_RATIO*100:.0f}%, {MAX_OVERLAP_RATIO*100:.0f}%]")
         print(f"  最大调整次数: {max_adjust_retries}")
 
+        scrolls_this_round = 0  # 本轮实际向下滚动次数
+
         for retry in range(max_adjust_retries + 1):
             self._check_timeout(start_time, timeout)
 
@@ -227,15 +229,17 @@ class ScrollScreenshotService:
 
             # 回滚到 img1 位置（retry=0 时不需要回滚）
             if retry > 0:
-                print(f"  回滚 2 次到 img1 位置（使用上次滚动幅度 {last_scroll_percent*100:.0f}%）...")
-                self._scroll_up(hwnd, last_scroll_percent, "hijack", virtual_x, virtual_y)
-                time.sleep(scroll_wait)
-                self._scroll_up(hwnd, last_scroll_percent, "hijack", virtual_x, virtual_y)
-                time.sleep(scroll_wait)
+                print(f"  回滚 {scrolls_this_round} 次到 img1 位置（使用上次滚动幅度 {last_scroll_percent*100:.0f}%）...")
+                for _ in range(scrolls_this_round):
+                    self._scroll_up(hwnd, last_scroll_percent, "hijack", virtual_x, virtual_y)
+                    time.sleep(scroll_wait)
+
+            scrolls_this_round = 0  # 重置本轮计数
 
             # 截取 img2
             self._scroll_down(hwnd, used_scroll_percent, "hijack", virtual_x, virtual_y)
             time.sleep(scroll_wait)
+            scrolls_this_round += 1
 
             print(f"  [2/{max_scrolls}] 截图中...")
             capture_result = windows_capture.capture(hwnd)
@@ -247,6 +251,7 @@ class ScrollScreenshotService:
             # 截取 img3
             self._scroll_down(hwnd, used_scroll_percent, "hijack", virtual_x, virtual_y)
             time.sleep(scroll_wait)
+            scrolls_this_round += 1
 
             print(f"  [3/{max_scrolls}] 截图中...")
             capture_result = windows_capture.capture(hwnd)
@@ -287,6 +292,7 @@ class ScrollScreenshotService:
                     print(f"    [2对3] 差异={header_diff}px < {STICKY_HEADER_THRESHOLD}px，吸顶可能未出现，继续滚动到 img4...")
                     self._scroll_down(hwnd, used_scroll_percent, "hijack", virtual_x, virtual_y)
                     time.sleep(scroll_wait)
+                    scrolls_this_round += 1
 
                     print(f"  [4/{max_scrolls}] 截图中...")
                     capture_result = windows_capture.capture(hwnd)

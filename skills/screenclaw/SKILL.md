@@ -39,7 +39,9 @@ description:
 
 ### 1. 网格坐标
 
-ScreenClaw 通过在截图上叠加坐标网格来定位元素。坐标格式为 `XxY`（如 `50x35`），表示截图中距左边界X%、距上边界Y%的位置。坐标的准确性直接影响操作成功率。你直接读出坐标即可，不需要计算实际像素位置。
+ScreenClaw 通过在截图上叠加的坐标网格来定位元素。网格交叉点上，有坐标数字。坐标格式为 `XxY`（如 `50x35`），表示截图中距左边界X%、距上边界Y%的位置。坐标的准确性直接影响操作成功率。你直接读出图片网格上的坐标即可，不需要计算实际像素位置，不能以你的内部坐标为准。
+
+**注意**：坐标数字通过“x”来分隔，X坐标 x Y坐标。坐标数字范围是0-100.
 
 | 参数 | 默认值 | 说明 | 调整建议 |
 |------|--------|------|----------|
@@ -264,8 +266,8 @@ python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> <session_id
 |-----|------|-----------|----------|
 | health | GET | 操作前检查服务 | `references/api/health.md` |
 | get_window_list | POST | 找目标窗口ID（建议带 include_children=true） | `references/api/get_window_list.md` |
-| screenshot | POST | 查看界面/定位坐标 | `references/api/screenshot.md` |
-| scroll_screenshot | POST | 滚动长截图，用于记录内容，不适用于定位坐标） | `references/api/scroll_screenshot.md` |
+| screenshot | POST | 定位坐标。或分析单屏页面 | `references/api/screenshot.md` |
+| scroll_screenshot | POST | 滚动长截图，用于分析或记录长内容，不适用于定位坐标） | `references/api/scroll_screenshot.md` |
 | click | POST | 触发按钮/进入页面 | `references/api/click.md` |
 | long_press | POST | 长按触发功能 | `references/api/long_press.md` |
 | swipe | POST | 触摸式滑动 | `references/api/swipe.md` |

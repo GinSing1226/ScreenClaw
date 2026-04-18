@@ -151,14 +151,15 @@ def find_content_bounds(img: Image.Image) -> Tuple[int, int]:
 def calculate_content_change_ratio(prev_img: Image.Image, curr_img: Image.Image) -> float:
     """计算两张截图内容区域的变化程度
 
-    与原版 calculate_image_similarity 的区别：
-    1. 不缩放（原版缩放到100x100会丢失一行文字级别的细节）
-    2. 排除上下各15%（固定头尾在所有截图中相同，会拉高相似度）
+    设计说明：
+    1. 不缩放（保留一行文字级别的细节）
+    2. 仅排除左右空白边距（find_content_bounds），不排除上下
+       - 调用方传入的图片已经裁掉了固定头部/底部，无需二次排除
     3. 用"显著变化像素占比"代替MSE（更直观、更可控）
 
     Args:
-        prev_img: 前一张截图
-        curr_img: 当前截图
+        prev_img: 前一张截图（已裁剪固定头尾）
+        curr_img: 当前截图（已裁剪固定头尾）
 
     Returns:
         ratio: 0~1，显著变化的像素占总像素的比例
@@ -170,11 +171,13 @@ def calculate_content_change_ratio(prev_img: Image.Image, curr_img: Image.Image)
     arr1 = np.array(prev_img.convert('L'), dtype=np.int32)
     arr2 = np.array(curr_img.convert('L'), dtype=np.int32)
 
-    h = arr1.shape[0]
-    # 排除上下各15%（大概率是固定头尾，不参与比较）
-    margin = int(h * 0.15)
-    region1 = arr1[margin:h - margin]
-    region2 = arr2[margin:h - margin]
+    # 检测左右内容边界，排除空白侧边栏
+    left, right = find_content_bounds(prev_img)
+    left = max(0, left - CONTENT_BOUND_MARGIN)
+    right = min(arr1.shape[1], right + CONTENT_BOUND_MARGIN)
+
+    region1 = arr1[:, left:right]
+    region2 = arr2[:, left:right]
 
     diff = np.abs(region1 - region2)
 

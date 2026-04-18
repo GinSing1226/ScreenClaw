@@ -219,6 +219,13 @@ const changeLanguage = (lang: string) => {
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">
+              {{ t('settings.scrollScreenshot.maxTimeout') }}
+              <span class="help-icon" :title="t('settings.tooltips.maxTimeout')">?</span>
+            </label>
+            <input type="number" v-model.number="settingsForm.maxTimeout" min="10" max="300" class="form-input" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">
               {{ t('settings.scrollScreenshot.maxAdjustRetries') }}
               <span class="help-icon" :title="t('settings.tooltips.maxAdjustRetries')">?</span>
             </label>

@@ -37,8 +37,8 @@ Content-Type: application/json
 | `session_id` | string | 是 | - | 会话唯一标识 |
 | `window_id` | int | 是 | - | 目标窗口句柄 |
 | `main_window_id` | int | 是 | - | 主窗口ID |
-| `x` | float | 否 | - | 输入位置横坐标，传则先点击激活再输入 |
-| `y` | float | 否 | - | 输入位置纵坐标，传则先点击激活再输入 |
+| `x` | float | 否 | - | 输入位置横坐标，传则先点击激活再输入。不传就直接输入 |
+| `y` | float | 否 | - | 输入位置纵坐标，传则先点击激活再输入。不传就直接输入 |
 | `text` | string | 是 | - | 输入文本，\n表示换行 |
 | `newline_key` | string | 否 | "shift enter" | 换行键（仅background）：ctrl enter/enter |
 | `action_method` | string | 否 | "background" | 操作方式：background/hijack |
