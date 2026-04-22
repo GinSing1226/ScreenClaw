@@ -11,6 +11,7 @@
 | 操作类型 | Python环境 | PowerShell终端 | bash终端 |
 |---------|-----------|---------------|---------|
 | 截图 | `fetch_screenshot_cli.py` | `fetch_screenshot_cli.ps1` | `fetch_screenshot_cli.sh` |
+| 裁剪放大 | `crop_zoom_screenshot_cli.py` | `crop_zoom_screenshot_cli.ps1` | `crop_zoom_screenshot_cli.sh` |
 | 滚动长截图 | `scroll_screenshot_cli.py` | `scroll_screenshot_cli.ps1` | `scroll_screenshot_cli.sh` |
 | batch | `api_call.py` | `api_call_batch.ps1` | `api_call.py` |
 | 其他所有API | `api_call.py` | `api_call.ps1` | `api_call.sh` |
@@ -18,6 +19,7 @@
 > **关键规则**：
 > - **batch 端点**：Python/bash 环境用 `api_call.py`（传 JSON instructions）；**仅 PowerShell 终端**才需要 `api_call_batch.ps1`（简化指令格式，避免 PS 吞双引号）
 > - **截图**：必须用专用脚本 `fetch_screenshot_cli`，不能用 `api_call`
+> - **裁剪放大**：必须用专用脚本 `crop_zoom_screenshot_cli`，不能用 `api_call`（需处理远程base64）
 > - **滚动长截图**：必须用专用脚本 `scroll_screenshot_cli`，不能用 `api_call`
 > - Python 环境优先，有 Python 就用 `.py` 脚本
 
@@ -119,6 +121,7 @@ PowerShell 终端会吞掉双引号，导致 JSON 损坏。必须用简化指令
 | press_key | 按键 | `press_key(key=ctrl c)` |
 | wait | 等待 | `wait(duration_ms=1000)` |
 | screenshot | 截图 | `screenshot(coordinate_type=grid)` |
+| crop_zoom_screenshot | 裁剪放大 | `crop_zoom_screenshot(source_image_path=...,center_x=55,center_y=65,crop_width=20,crop_height=20)` |
 
 **用法**：
 
@@ -166,11 +169,36 @@ PowerShell 终端会吞掉双引号，导致 JSON 损坏。必须用简化指令
 # Python版本
 python scripts/fetch_screenshot_cli.py <api_url> <token> <window_id> <session_id> <ai_app_type> <main_window_id> [可选参数...]
 
-# 示例
+# 示例：基础截图
 python scripts/fetch_screenshot_cli.py http://localhost:12261 TOKEN 1380176 sess_001 claude_code 1380176
+
+# 示例：调整网格密度（x/y分离）+ 标记点预览
+python scripts/fetch_screenshot_cli.py http://localhost:12261 TOKEN 1380176 sess_001 claude_code 1380176 grid_density_x=3.3 grid_density_y=5 marker_x=55 marker_y=65
 ```
 
 **详细参数**：查看 `references/api/screenshot.md`
+
+---
+
+## 裁剪放大专用脚本
+
+`crop_zoom_screenshot_cli.py` / `crop_zoom_screenshot_cli.ps1` / `crop_zoom_screenshot_cli.sh`
+
+**用法**：
+```bash
+# Python版本
+python scripts/crop_zoom_screenshot_cli.py <api_url> <token> <source_image_path> <session_id> <ai_app_type> center_x=<值> center_y=<值> crop_width=<值> crop_height=<值> [zoom_scale=<值>]
+
+# 示例：裁剪放大截图局部
+python scripts/crop_zoom_screenshot_cli.py http://localhost:12261 TOKEN "D:/screenClaw/data/.../screenshot_143215.png" sess_001 claude_code center_x=55 center_y=65 crop_width=20 crop_height=20
+
+# 示例：大幅放大看细节
+python scripts/crop_zoom_screenshot_cli.py http://localhost:12261 TOKEN "D:/screenClaw/data/.../screenshot_143215.png" sess_001 claude_code center_x=55 center_y=65 crop_width=10 crop_height=10 zoom_scale=4.0
+```
+
+**详细参数**：查看 `references/api/crop_zoom_screenshot.md`
+
+**注意**：不需要window_id，仅对已有图片文件进行裁剪放大处理
 
 ---
 
@@ -223,7 +251,4 @@ python scripts/api_call.py http://localhost:12261 TOKEN batch ai_app_type=claude
 # PowerShell版本（兼容5.x和7.x，使用简化指令格式）
 # 直接传入中文、Emoji、\n换行，脚本以UTF-8编码发送
 powershell -ExecutionPolicy Bypass -File scripts/api_call_batch.ps1 -ApiUrl http://localhost:12261 -Token TOKEN -AiAppType claude_code -SessionId sess_001 -WindowId 123456 -MainWindowId 123456 -Instructions "input_text(x=50,y=35,text=hello\n你好😊)"
-
-# PowerShell版本 + hijack模式（在指令参数中加 action_method=hijack）
-powershell -ExecutionPolicy Bypass -File scripts/api_call_batch.ps1 -ApiUrl http://localhost:12261 -Token TOKEN -AiAppType claude_code -SessionId sess_001 -WindowId 123456 -MainWindowId 123456 -Instructions "input_text(x=50,y=35,text=第一行\n第二行,action_method=hijack);click(x=97,y=96)"
 ```

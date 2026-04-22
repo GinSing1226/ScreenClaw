@@ -181,6 +181,62 @@ const changeLanguage = (lang: string) => {
         </div>
       </section>
 
+      <!-- 坐标标记点 -->
+      <section class="settings-section">
+        <h3 class="section-subtitle">{{ t('settings.screenshot.markerTitle') }}</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">
+              {{ t('settings.screenshot.markerRingRadius') }}
+              <span class="help-icon" :title="t('settings.tooltips.markerRingRadius')">?</span>
+            </label>
+            <input type="number" v-model.number="settingsForm.markerRingRadius" min="4" max="64" step="1" class="form-input" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">
+              {{ t('settings.screenshot.markerRingLineWidth') }}
+              <span class="help-icon" :title="t('settings.tooltips.markerRingLineWidth')">?</span>
+            </label>
+            <input type="number" v-model.number="settingsForm.markerRingLineWidth" min="1" max="8" step="1" class="form-input" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">
+              {{ t('settings.screenshot.markerRingColor') }}
+              <span class="help-icon" :title="t('settings.tooltips.markerRingColor')">?</span>
+            </label>
+            <input type="color" v-model="settingsForm.markerRingColor" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">
+              {{ t('settings.screenshot.markerDotRadius') }}
+              <span class="help-icon" :title="t('settings.tooltips.markerDotRadius')">?</span>
+            </label>
+            <input type="number" v-model.number="settingsForm.markerDotRadius" min="1" max="16" step="1" class="form-input" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">
+            {{ t('settings.screenshot.markerDotColor') }}
+            <span class="help-icon" :title="t('settings.tooltips.markerDotColor')">?</span>
+          </label>
+          <input type="color" v-model="settingsForm.markerDotColor" />
+        </div>
+      </section>
+
+      <!-- 裁剪放大 -->
+      <section class="settings-section">
+        <h3 class="section-subtitle">{{ t('settings.screenshot.cropZoomTitle') }}</h3>
+        <div class="form-group">
+          <label class="form-label">
+            {{ t('settings.screenshot.cropZoomScale') }}
+            <span class="help-icon" :title="t('settings.tooltips.cropZoomScale')">?</span>
+          </label>
+          <input type="number" v-model.number="settingsForm.cropZoomScale" min="1.0" max="10.0" step="0.5" class="form-input" />
+        </div>
+      </section>
+
       <!-- 滚动长截图 -->
       <section class="settings-section">
         <h3 class="section-subtitle">{{ t('settings.scrollScreenshot.title') }}</h3>

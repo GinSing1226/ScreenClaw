@@ -34,7 +34,7 @@ class TestLogService:
 
         # 验证文件被创建
         date_str = datetime.now().strftime("%Y-%m-%d")
-        expected_file = os.path.join(log_dir, f"test_app-session_001-{date_str}.jsonl")
+        expected_file = os.path.join(log_dir, f"test_app__session_001__{date_str}.jsonl")
         assert os.path.exists(expected_file)
 
         # 清理

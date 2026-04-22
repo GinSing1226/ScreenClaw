@@ -247,24 +247,24 @@ class LogService:
             if not filename.endswith('.jsonl'):
                 continue
 
-            # 解析文件名: ai_app_type-session_id-yyyy-mm-dd.jsonl
+            # 解析文件名: ai_app_type__session_id__yyyy-mm-dd.jsonl
             # 日期格式固定为yyyy-mm-dd，从右边取10个字符
             name_without_ext = filename.replace('.jsonl', '')
 
-            # 日期是最后10个字符
-            if len(name_without_ext) < 12:  # 至少 x-x-yyyy-mm-dd
+            # 日期是最后10个字符，前面有双下划线分隔
+            if len(name_without_ext) < 14:  # 至少 a__b__yyyy-mm-dd
                 continue
 
             file_date = name_without_ext[-10:]  # yyyy-mm-dd
-            remaining = name_without_ext[:-11]  # 去掉 -yyyy-mm-dd
+            remaining = name_without_ext[:-12]  # 去掉 __yyyy-mm-dd
 
             # 验证日期格式
             if len(file_date) != 10 or file_date[4] != '-' or file_date[7] != '-':
                 continue
 
             # 分离 ai_app_type 和 session_id
-            # 格式: ai_app_type-session_id
-            remaining_parts = remaining.rsplit('-', 1)
+            # 格式: ai_app_type__session_id
+            remaining_parts = remaining.rsplit('__', 1)
             if len(remaining_parts) < 2:
                 continue
 

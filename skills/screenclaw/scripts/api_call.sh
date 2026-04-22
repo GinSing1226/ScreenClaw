@@ -74,7 +74,8 @@ for arg in "$@"; do
         # 跳过 ai_app_type，后面单独处理
         if [[ "$key" != "ai_app_type" ]]; then
             # JSON数组/对象不加引号包裹，其他值加引号
-            if [[ "$value" == "["* || "$value" == "{"* || "$value" == "true" || "$value" == "false" || "$value" =~ ^[0-9]+$ ]]; then
+            # text/key/keyword/action/newline_key 始终作为字符串
+            if [[ "$value" == "["* || "$value" == "{"* || "$value" == "true" || "$value" == "false" || ( "$value" =~ ^[0-9]+$ && "$key" != "text" && "$key" != "key" && "$key" != "keyword" && "$key" != "action" && "$key" != "newline_key" ) ]]; then
                 PARAMS+=("\"$key\":$value")
             else
                 PARAMS+=("\"$key\":\"$value\"")

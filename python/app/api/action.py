@@ -1,6 +1,7 @@
 """
 操作API - 点击、长按、滑动、拖拽、滚动、右键、等待
 """
+import random
 import time
 from fastapi import APIRouter, Header, Request
 
@@ -52,7 +53,7 @@ async def click(request: ClickRequest, req: Request = None, authorization: str =
     # 计算坐标
     coords = _calc_coords(request.window_id, request.x, request.y, request.main_window_id)
     if not coords:
-        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
+        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle. The window may have been closed or minimized. Refer to skill.md for troubleshooting.")
     physical_x, physical_y, virtual_x, virtual_y = coords
 
     # 调试日志：坐标计算
@@ -69,7 +70,7 @@ async def click(request: ClickRequest, req: Request = None, authorization: str =
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="Command sent, verify with screenshot")
+        return BaseResponse(success=True, message="Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning.")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -83,7 +84,7 @@ async def long_press(request: LongPressRequest, req: Request = None, authorizati
     # 计算坐标
     coords = _calc_coords(request.window_id, request.x, request.y, request.main_window_id)
     if not coords:
-        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
+        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle. The window may have been closed or minimized. Refer to skill.md for troubleshooting.")
     physical_x, physical_y, virtual_x, virtual_y = coords
 
     # 执行长按
@@ -96,7 +97,7 @@ async def long_press(request: LongPressRequest, req: Request = None, authorizati
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="Command sent, verify with screenshot")
+        return BaseResponse(success=True, message="Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning.")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -110,13 +111,13 @@ async def swipe(request: SwipeRequest, req: Request = None, authorization: str =
     # 计算起点坐标
     start_coords = _calc_coords(request.window_id, request.start_x, request.start_y, request.main_window_id)
     if not start_coords:
-        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
+        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle. The window may have been closed or minimized. Refer to skill.md for troubleshooting.")
     physical_start_x, physical_start_y, virtual_start_x, virtual_start_y = start_coords
 
     # 计算终点坐标
     end_coords = _calc_coords(request.window_id, request.end_x, request.end_y, request.main_window_id)
     if not end_coords:
-        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
+        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle. The window may have been closed or minimized. Refer to skill.md for troubleshooting.")
     physical_end_x, physical_end_y, virtual_end_x, virtual_end_y = end_coords
 
     inject_result = windows_input.swipe(
@@ -127,27 +128,38 @@ async def swipe(request: SwipeRequest, req: Request = None, authorization: str =
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="Command sent, verify with screenshot")
+        return BaseResponse(success=True, message="Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning.")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
 
 @router.post("/drag")
 @with_verification
-@with_hijack_confirm("Drag", lambda r: f"({r.start_x}, {r.start_y}) → ({r.end_x}, {r.end_y}), Duration: {r.duration_ms}ms")
+@with_hijack_confirm("Drag", lambda r: (
+    f"({r.start_x}, {r.start_y}) → ({r.end_x}, {r.end_y}), Duration: {r.duration_ms}ms"
+    + (f" [CROSS-PROCESS: window {r.window_id} -> {r.target_window_id}]"
+       if r.target_window_id and r.target_window_id != r.window_id else "")
+))
 @log_and_format
 async def drag(request: DragRequest, req: Request = None, authorization: str = Header(None)):
     """拖拽"""
-    # 计算起点坐标
+    is_cross_process = (
+        request.target_window_id is not None
+        and request.target_window_id != request.window_id
+    )
+
+    # 计算起点坐标（始终相对于 window_id）
     start_coords = _calc_coords(request.window_id, request.start_x, request.start_y, request.main_window_id)
     if not start_coords:
-        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
+        return create_error_response("INTERNAL_ERROR", "Cannot get source window rectangle. The window may have been closed or minimized. Refer to skill.md for troubleshooting.")
     physical_start_x, physical_start_y, virtual_start_x, virtual_start_y = start_coords
 
-    # 计算终点坐标
-    end_coords = _calc_coords(request.window_id, request.end_x, request.end_y, request.main_window_id)
+    # 计算终点坐标（跨进程时相对于 target_window_id）
+    end_hwnd = request.target_window_id if is_cross_process else request.window_id
+    end_main_window_id = request.target_main_window_id if is_cross_process else request.main_window_id
+    end_coords = _calc_coords(end_hwnd, request.end_x, request.end_y, end_main_window_id)
     if not end_coords:
-        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
+        return create_error_response("INTERNAL_ERROR", "Cannot get target window rectangle. The window may have been closed or minimized. Refer to skill.md for troubleshooting.")
     physical_end_x, physical_end_y, virtual_end_x, virtual_end_y = end_coords
 
     inject_result = windows_input.drag(
@@ -155,11 +167,12 @@ async def drag(request: DragRequest, req: Request = None, authorization: str = H
         physical_start_x, physical_start_y, physical_end_x, physical_end_y,
         virtual_start_x, virtual_start_y, virtual_end_x, virtual_end_y,
         request.duration_ms,
-        request.action_method
+        request.action_method,
+        target_hwnd=request.target_window_id if is_cross_process else None
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="Command sent, verify with screenshot")
+        return BaseResponse(success=True, message="Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning.")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -179,7 +192,7 @@ async def mouse_move(request: MouseMoveRequest, req: Request = None, authorizati
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="Command sent, verify with screenshot")
+        return BaseResponse(success=True, message="Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning.")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -193,7 +206,7 @@ async def scroll(request: ScrollRequest, req: Request = None, authorization: str
     # 计算坐标
     coords = _calc_coords(request.window_id, request.x, request.y, request.main_window_id)
     if not coords:
-        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
+        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle. The window may have been closed or minimized. Refer to skill.md for troubleshooting.")
     physical_x, physical_y, virtual_x, virtual_y = coords
 
     inject_result = windows_input.scroll(
@@ -205,7 +218,7 @@ async def scroll(request: ScrollRequest, req: Request = None, authorization: str
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="Command sent, verify with screenshot")
+        return BaseResponse(success=True, message="Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning.")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -219,7 +232,7 @@ async def hover(request: HoverRequest, req: Request = None, authorization: str =
     # 计算坐标
     coords = _calc_coords(request.window_id, request.x, request.y, request.main_window_id)
     if not coords:
-        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
+        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle. The window may have been closed or minimized. Refer to skill.md for troubleshooting.")
     physical_x, physical_y, virtual_x, virtual_y = coords
 
     inject_result = windows_input.hover(
@@ -231,7 +244,7 @@ async def hover(request: HoverRequest, req: Request = None, authorization: str =
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="Command sent, verify with screenshot")
+        return BaseResponse(success=True, message="Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning.")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -245,7 +258,7 @@ async def right_click(request: RightClickRequest, req: Request = None, authoriza
     # 计算坐标
     coords = _calc_coords(request.window_id, request.x, request.y, request.main_window_id)
     if not coords:
-        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
+        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle. The window may have been closed or minimized. Refer to skill.md for troubleshooting.")
     physical_x, physical_y, virtual_x, virtual_y = coords
 
     inject_result = windows_input.right_click(
@@ -256,7 +269,7 @@ async def right_click(request: RightClickRequest, req: Request = None, authoriza
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="Command sent, verify with screenshot")
+        return BaseResponse(success=True, message="Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning.")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -269,7 +282,13 @@ async def wait(request: WaitRequest, req: Request = None, authorization: str = H
     start_time = time.time()
     client_ip = get_client_ip(req) if req else "unknown"
 
-    time.sleep(request.duration_ms / 1000)
+    if request.random_range > 0:
+        low = max(1, request.duration_ms - request.random_range)
+        high = request.duration_ms + request.random_range
+        actual_ms = random.randint(low, high)
+    else:
+        actual_ms = request.duration_ms
+    time.sleep(actual_ms / 1000)
 
     duration_ms = int((time.time() - start_time) * 1000)
 
@@ -279,7 +298,7 @@ async def wait(request: WaitRequest, req: Request = None, authorization: str = H
         window_id=request.window_id,
         process_name="",
         instruction="wait",
-        params={"duration_ms": request.duration_ms},
+        params={"duration_ms": request.duration_ms, "random_range": request.random_range, "actual_ms": actual_ms},
         result={"success": True},
         duration_ms=duration_ms,
         client_ip=client_ip

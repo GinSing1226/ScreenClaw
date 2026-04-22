@@ -1,6 +1,7 @@
 """
 系统API - 健康检查、组合指令
 """
+import random
 import time
 from fastapi import APIRouter, Header, Request
 
@@ -19,20 +20,18 @@ from app.utils.coordinate import restore_window_and_calc_coords
 router = APIRouter()
 
 # 服务启动时间
-START_TIME = time.time()
 
 
 @router.get("/health")
 async def health_check():
     """健康检查"""
-    uptime = int(time.time() - START_TIME)
+    server_time = time.strftime("%Y-%m-%d %H:%M:%S")
 
     return HealthResponse(
         success=True,
         message="Service OK",
         data=HealthData(
-            version="1.0.0",
-            uptime_seconds=uptime
+            server_time=server_time
         )
     )
 
@@ -104,9 +103,11 @@ async def batch_execute(request: BatchRequest, req: Request = None, authorizatio
     )
 
     if failed_index is not None:
+        failed_action = request.instructions[failed_index].action
+        failed_msg = results[failed_index].message
         return BatchResponse(
             success=False,
-            message=f"Execution interrupted at instruction{failed_index + 1}  failed",
+            message=f"Execution interrupted at instruction {failed_index + 1} ({failed_action}) failed: {failed_msg}",
             data=BatchData(
                 executed_count=executed_count,
                 failed_index=failed_index,
@@ -152,16 +153,16 @@ async def _execute_single_instruction(
         action_method = "delegated"
 
     # 成功消息：最后一步提示可截图验证
-    _success_msg = "Command sent, verify with screenshot" if is_last else "Command sent"
+    _success_msg = "Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning." if is_last else "Command sent"
 
     # 获取进程信息（所有模式都需要，用于禁止检查）
     process_info = process_service.get_process_by_window_id(window_id)
     if not process_info:
-        return {"success": False, "message": "Window not found"}
+        return {"success": False, "message": "Window not found. The window may have been closed. Use get_window_list to get a valid window_id. Refer to skill.md for troubleshooting."}
 
     # 检查进程是否被禁止（所有模式都生效）
     if config_service.is_process_blocked(process_info.process_name):
-        return {"success": False, "message": "Process is blocked"}
+        return {"success": False, "message": "Process is blocked. This process is in the blocked list and operations are not allowed. Refer to skill.md for troubleshooting."}
 
     # hijack 模式需要用户确认（托管模式下跳过）
     if action_method == "hijack":
@@ -200,6 +201,9 @@ async def _execute_single_instruction(
         elif action == "drag":
             detail_parts.append(f"From ({params.get('start_x', 0)}, {params.get('start_y', 0)}) to ({params.get('end_x', 0)}, {params.get('end_y', 0)})")
             detail_parts.append(f"Duration: {params.get('duration_ms', 500)}ms")
+            target_wid = params.get("target_window_id")
+            if target_wid and target_wid != window_id:
+                detail_parts.append(f"[CROSS-PROCESS: window {window_id} -> {target_wid}]")
         elif action == "mouse_move":
             detail_parts.append(f"Delta: ({params.get('delta_x', 0)}, {params.get('delta_y', 0)})")
             detail_parts.append(f"Duration: {params.get('duration_ms', 300)}ms")
@@ -236,14 +240,14 @@ async def _execute_single_instruction(
         if action == "click":
             c = _calc(params["x"], params["y"], main_window_id)
             if not c:
-                return {"success": False, "message": "Cannot get window rectangle"}
+                return {"success": False, "message": "Cannot get window rectangle. The window may have been closed or minimized. Refer to skill.md for troubleshooting."}
             r = windows_input.click(window_id, c[0], c[1], c[2], c[3], action_method)
             return {"success": r.success, "message": r.error or _success_msg}
 
         elif action == "long_press":
             c = _calc(params["x"], params["y"], main_window_id)
             if not c:
-                return {"success": False, "message": "Cannot get window rectangle"}
+                return {"success": False, "message": "Cannot get window rectangle. The window may have been closed or minimized. Refer to skill.md for troubleshooting."}
             dur = params.get("duration_ms", 500)
             r = windows_input.long_press(window_id, c[0], c[1], c[2], c[3], dur, action_method)
             return {"success": r.success, "message": r.error or _success_msg}
@@ -252,19 +256,37 @@ async def _execute_single_instruction(
             cs = _calc(params["start_x"], params["start_y"], main_window_id)
             ce = _calc(params["end_x"], params["end_y"], main_window_id)
             if not cs or not ce:
-                return {"success": False, "message": "Cannot get window rectangle"}
+                return {"success": False, "message": "Cannot get window rectangle. The window may have been closed or minimized. Refer to skill.md for troubleshooting."}
             r = windows_input.swipe(window_id, cs[0], cs[1], ce[0], ce[1],
                                     cs[2], cs[3], ce[2], ce[3], action_method)
             return {"success": r.success, "message": r.error or _success_msg}
 
         elif action == "drag":
+            target_window_id = params.get("target_window_id")
+            target_main_window_id = params.get("target_main_window_id")
+            is_cross_process = (target_window_id is not None and target_window_id != window_id)
+
             cs = _calc(params["start_x"], params["start_y"], main_window_id)
-            ce = _calc(params["end_x"], params["end_y"], main_window_id)
-            if not cs or not ce:
-                return {"success": False, "message": "Cannot get window rectangle"}
+            if not cs:
+                return {"success": False, "message": "Cannot get source window rectangle. The window may have been closed or minimized. Refer to skill.md for troubleshooting."}
+
+            if is_cross_process:
+                ce = restore_window_and_calc_coords(
+                    target_window_id, params["end_x"], params["end_y"], target_main_window_id
+                )
+                action_method = "hijack"
+            else:
+                ce = _calc(params["end_x"], params["end_y"], main_window_id)
+
+            if not ce:
+                return {"success": False, "message": "Cannot get target window rectangle. The window may have been closed or minimized. Refer to skill.md for troubleshooting."}
+
             dur = params.get("duration_ms", 500)
-            r = windows_input.drag(window_id, cs[0], cs[1], ce[0], ce[1],
-                                   cs[2], cs[3], ce[2], ce[3], dur, action_method)
+            r = windows_input.drag(
+                window_id, cs[0], cs[1], ce[0], ce[1],
+                cs[2], cs[3], ce[2], ce[3], dur, action_method,
+                target_hwnd=target_window_id if is_cross_process else None
+            )
             return {"success": r.success, "message": r.error or _success_msg}
 
         elif action == "mouse_move":
@@ -276,7 +298,7 @@ async def _execute_single_instruction(
         elif action == "scroll":
             c = _calc(params["x"], params["y"], main_window_id)
             if not c:
-                return {"success": False, "message": "Cannot get window rectangle"}
+                return {"success": False, "message": "Cannot get window rectangle. The window may have been closed or minimized. Refer to skill.md for troubleshooting."}
             r = windows_input.scroll(window_id, c[0], c[1], c[2], c[3],
                                      params["delta"], action_method)
             return {"success": r.success, "message": r.error or _success_msg}
@@ -284,14 +306,14 @@ async def _execute_single_instruction(
         elif action == "right_click":
             c = _calc(params["x"], params["y"], main_window_id)
             if not c:
-                return {"success": False, "message": "Cannot get window rectangle"}
+                return {"success": False, "message": "Cannot get window rectangle. The window may have been closed or minimized. Refer to skill.md for troubleshooting."}
             r = windows_input.right_click(window_id, c[0], c[1], c[2], c[3], action_method)
             return {"success": r.success, "message": r.error or _success_msg}
 
         elif action == "hover":
             c = _calc(params["x"], params["y"], main_window_id)
             if not c:
-                return {"success": False, "message": "Cannot get window rectangle"}
+                return {"success": False, "message": "Cannot get window rectangle. The window may have been closed or minimized. Refer to skill.md for troubleshooting."}
             dur = params.get("duration_ms", 500)
             r = windows_input.hover(window_id, c[0], c[1], c[2], c[3], dur, action_method)
             return {"success": r.success, "message": r.error or _success_msg}
@@ -350,7 +372,14 @@ async def _execute_single_instruction(
 
         elif action == "wait":
             dur = params.get("duration_ms", 1000)
-            time.sleep(dur / 1000)
+            rr = params.get("random_range", 0)
+            if rr > 0:
+                low = max(1, dur - rr)
+                high = dur + rr
+                actual = random.randint(low, high)
+            else:
+                actual = dur
+            time.sleep(actual / 1000)
             return {"success": True, "message": "Wait completed"}
 
         elif action == "screenshot":
@@ -379,7 +408,8 @@ async def _execute_single_instruction(
                 config = config_service.get()
 
                 grid_params = params.get("grid", {})
-                grid_density = grid_params.get("density", config.screenshot.default_grid_density)
+                grid_density_x = grid_params.get("density_x", config.screenshot.default_grid_density)
+                grid_density_y = grid_params.get("density_y", config.screenshot.default_grid_density)
                 grid_opacity = grid_params.get("opacity", config.screenshot.default_grid_opacity)
                 grid_color = grid_params.get("color", config.screenshot.default_grid_color)
 
@@ -394,7 +424,8 @@ async def _execute_single_instruction(
                 color_mode = params.get("color_mode") or config.screenshot.default_color_mode
 
                 renderer = GridRenderer(
-                    density=grid_density,
+                    density_x=grid_density_x,
+                    density_y=grid_density_y,
                     grid_opacity=grid_opacity,
                     grid_color=grid_color,
                     number_density=number_density,
@@ -405,6 +436,30 @@ async def _execute_single_instruction(
                     color_mode=color_mode
                 )
                 image = renderer.draw_grid(image)
+
+            # 绘制标记（根据指令参数）
+            marker_params = params.get("marker")
+            if marker_params:
+                # 支持单个对象或数组
+                marker_list = marker_params if isinstance(marker_params, list) else [marker_params]
+                for mp in marker_list:
+                    if "x" not in mp or "y" not in mp:
+                        return {"success": False, "message": "Marker requires both x and y"}
+                config = config_service.get()
+                # 确保有 renderer 实例（如果没画网格则创建一个最小实例）
+                if coord_type == "no":
+                    renderer = GridRenderer()
+                for mp in marker_list:
+                    image = renderer.draw_marker(
+                        image,
+                        x=mp["x"],
+                        y=mp["y"],
+                        ring_radius=mp.get("ring_radius", config.screenshot.default_marker_ring_radius),
+                        ring_line_width=mp.get("ring_line_width", config.screenshot.default_marker_ring_line_width),
+                        ring_color=mp.get("ring_color", config.screenshot.default_marker_ring_color),
+                        dot_radius=mp.get("dot_radius", config.screenshot.default_marker_dot_radius),
+                        dot_color=mp.get("dot_color", config.screenshot.default_marker_dot_color)
+                    )
 
             # 压缩图片
             config = config_service.get()
@@ -430,9 +485,101 @@ async def _execute_single_instruction(
             else:
                 result_data = {"image_base64": image_base64}
 
+            if marker_params:
+                screenshot_msg = "Screenshot successful. Marker indicates the position of your input coordinates on the image. If result is unsatisfactory, refer to skill.md for parameter tuning."
+            else:
+                screenshot_msg = "Screenshot successful. If result is unsatisfactory, refer to skill.md for parameter tuning."
+
             return {
                 "success": True,
-                "message": "Screenshot completed",
+                "message": screenshot_msg,
+                "data": result_data
+            }
+
+        elif action == "crop_zoom_screenshot":
+            from app.utils.image import image_to_base64, save_image
+            from app.utils.image import generate_crop_zoom_filename, generate_data_dir
+            from app.utils.image import validate_source_image_path, crop_and_zoom
+            from PIL import Image
+
+            required_fields = ["source_image_path", "center_x", "center_y", "crop_width", "crop_height"]
+            for field in required_fields:
+                if field not in params:
+                    return {"success": False, "message": f"Missing required parameter: {field}"}
+
+            config = config_service.get()
+            source_path = params["source_image_path"]
+            center_x = params["center_x"]
+            center_y = params["center_y"]
+            crop_w = params["crop_width"]
+            crop_h = params["crop_height"]
+            zoom_scale = params.get("zoom_scale", config.screenshot.default_crop_zoom_scale)
+
+            # 路径校验
+            path_error = validate_source_image_path(source_path)
+            if path_error:
+                log_service.log(
+                    ai_app_type=ai_app_type, session_id=session_id, window_id=0,
+                    process_name="", instruction="crop_zoom_screenshot",
+                    params=params, result={"success": False, "message": path_error},
+                    client_ip=client_ip
+                )
+                return {"success": False, "message": path_error}
+
+            if not source_path or not os.path.exists(source_path):
+                log_service.log(
+                    ai_app_type=ai_app_type, session_id=session_id, window_id=0,
+                    process_name="", instruction="crop_zoom_screenshot",
+                    params=params, result={"success": False, "message": f"Image file not found: {source_path}"},
+                    client_ip=client_ip
+                )
+                return {"success": False, "message": f"Image file not found: {source_path}. Check if the file exists or the path is correct."}
+
+            try:
+                with Image.open(source_path) as source_image:
+                    try:
+                        zoomed = crop_and_zoom(
+                            source_image, center_x, center_y, crop_w, crop_h, zoom_scale
+                        )
+                    except ValueError as e:
+                        log_service.log(
+                            ai_app_type=ai_app_type, session_id=session_id, window_id=0,
+                            process_name="", instruction="crop_zoom_screenshot",
+                            params=params, result={"success": False, "message": str(e)},
+                            client_ip=client_ip
+                        )
+                        return {"success": False, "message": str(e)}
+            except Exception as e:
+                log_service.log(
+                    ai_app_type=ai_app_type, session_id=session_id, window_id=0,
+                    process_name="", instruction="crop_zoom_screenshot",
+                    params=params, result={"success": False, "message": f"Failed to read image: {source_path}"},
+                    client_ip=client_ip
+                )
+                return {"success": False, "message": f"Failed to read image: {source_path}. Unsupported format or corrupted file."}
+
+            data_dir = generate_data_dir("data", ai_app_type, session_id)
+            filename = generate_crop_zoom_filename()
+            image_path = os.path.join(data_dir, filename)
+            save_image(zoomed, image_path)
+
+            image_base64 = image_to_base64(zoomed)
+            is_local = is_local_request(client_ip)
+            if is_local:
+                result_data = {"image_path": os.path.abspath(image_path)}
+            else:
+                result_data = {"image_base64": image_base64}
+
+            log_service.log(
+                ai_app_type=ai_app_type, session_id=session_id, window_id=0,
+                process_name="", instruction="crop_zoom_screenshot",
+                params=params, result={"success": True, "image_path": image_path},
+                client_ip=client_ip
+            )
+
+            return {
+                "success": True,
+                "message": "Crop zoom successful. If details are still unclear, adjust parameters and process the same source image again.",
                 "data": result_data
             }
 

@@ -36,7 +36,7 @@ function Parse-Params {
 
             if ($value -eq 'true') { $value = $true }
             elseif ($value -eq 'false') { $value = $false }
-            elseif ($value -match '^\d+$') { $value = [int]$value }
+            elseif ($value -match '^\d+$' -and $key -notin @('text','key','keyword','action','newline_key')) { $value = [int]$value }
             elseif ($value -match '^\d+\.\d+$') { $value = [double]$value }
             elseif ($value.StartsWith('[') -or $value.StartsWith('{')) {
                 # JSON数组或对象，尝试解析（兼容 PS 5.1）

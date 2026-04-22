@@ -20,7 +20,8 @@
     简化格式：action(key=value,key=value);action(key=value,key=value)
 
     支持的 action：click, long_press, swipe, drag, scroll, right_click, hover,
-                   mouse_move, input_text, press_key, wait, screenshot
+                   mouse_move, input_text, press_key, wait, screenshot,
+                   crop_zoom_screenshot
 
 .PARAMETER ApiUrl
     ScreenClaw 服务地址。示例：http://localhost:12261
@@ -93,6 +94,76 @@ function Parse-Instructions {
     return $instructions
 }
 
+# 后处理：将扁平的嵌套参数转换为嵌套对象
+function Convert-NestedParams {
+    param([array]$Instructions)
+
+    foreach ($inst in $Instructions) {
+        $action = $inst.action
+        $params = $inst.params
+
+        # screenshot: grid_density_x/y → grid对象, marker_x/y → marker对象
+        if ($action -eq 'screenshot') {
+            $grid = @{}
+            $gridKeys = @('grid_density_x', 'grid_density_y', 'grid_opacity', 'grid_color')
+            $gridMap = @{ 'grid_density_x' = 'density_x'; 'grid_density_y' = 'density_y'; 'grid_opacity' = 'opacity'; 'grid_color' = 'color' }
+            foreach ($gk in $gridKeys) {
+                if ($params.ContainsKey($gk)) {
+                    $grid[$gridMap[$gk]] = $params[$gk]
+                    $params.Remove($gk)
+                }
+            }
+            if ($grid.Count -gt 0) { $params['grid'] = $grid }
+
+            $marker = @{}
+            $markerKeys = @('marker_x', 'marker_y', 'marker_ring_radius', 'marker_ring_line_width', 'marker_ring_color', 'marker_dot_radius', 'marker_dot_color')
+            $markerMap = @{ 'marker_x' = 'x'; 'marker_y' = 'y'; 'marker_ring_radius' = 'ring_radius'; 'marker_ring_line_width' = 'ring_line_width'; 'marker_ring_color' = 'ring_color'; 'marker_dot_radius' = 'dot_radius'; 'marker_dot_color' = 'dot_color' }
+            foreach ($mk in $markerKeys) {
+                if ($params.ContainsKey($mk)) {
+                    $marker[$markerMap[$mk]] = $params[$mk]
+                    $params.Remove($mk)
+                }
+            }
+
+            # 多标记点：收集 marker_N_x/marker_N_y 索引
+            $markerIndices = @{}
+            foreach ($key in @($params.Keys)) {
+                if ($key -match '^marker_(\d+)_x$') {
+                    $markerIndices[$Matches[1]] = $true
+                }
+            }
+            # 向后兼容：marker_x/marker_y → 索引 1
+            if ($marker.Count -gt 0 -and -not $markerIndices.ContainsKey('1')) {
+                $markerIndices['1'] = $true
+            }
+
+            $markerArray = @()
+            foreach ($idx in ($markerIndices.Keys | Sort-Object { [int]$_ })) {
+                $m = @{}
+                foreach ($f in @('x','y','ring_radius','ring_line_width','ring_color','dot_radius','dot_color')) {
+                    $idxKey = "marker_${idx}_${f}"
+                    if ($params.ContainsKey($idxKey)) { $m[$f] = $params[$idxKey]; $params.Remove($idxKey) }
+                }
+                # 向后兼容
+                if ($idx -eq '1' -and $m.Count -eq 0) {
+                    $m = $marker
+                }
+                if ($m.ContainsKey('x') -and $m.ContainsKey('y')) {
+                    $markerArray += ,$m
+                }
+            }
+            # 清理已消费的 marker_* 前缀参数
+            foreach ($key in @($params.Keys)) {
+                if ($key -match '^marker_\d+_') { $params.Remove($key) }
+            }
+
+            if ($markerArray.Count -gt 0) { $params['marker'] = $markerArray }
+            elseif ($marker.Count -gt 0) { $params['marker'] = $marker }
+        }
+    }
+    return $Instructions
+}
+
 # 强制检查必需参数
 if (-not $AiAppType) {
     Write-Error "错误：ai_app_type 参数必须显式传入。例如：-AiAppType claude_code"
@@ -109,6 +180,9 @@ if (-not $MainWindowId) {
 
 # 解析 instructions（确保始终是数组，PS单元素会被展平）
 $parsedInstructions = @(Parse-Instructions -Raw $Instructions)
+
+# 后处理：转换嵌套参数（marker, grid等）
+$parsedInstructions = @(Convert-NestedParams -Instructions $parsedInstructions)
 
 # 构建 body
 $body = @{

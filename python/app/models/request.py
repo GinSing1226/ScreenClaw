@@ -1,8 +1,8 @@
 """
 请求数据模型
 """
-from pydantic import BaseModel, Field, model_validator
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field, model_validator, field_validator
+from typing import Optional, List, Dict, Any, Union
 
 
 # ============ 通用字段 ============
@@ -19,7 +19,8 @@ class BaseRequest(BaseModel):
 
 class GridParams(BaseModel):
     """网格参数"""
-    density: float = Field(default=5.0, ge=0, le=100, description="网格密度")
+    density_x: float = Field(default=5.0, ge=0.1, le=100, description="水平网格密度百分比(0-100)")
+    density_y: float = Field(default=5.0, ge=0.1, le=100, description="垂直网格密度百分比(0-100)")
     opacity: int = Field(default=50, ge=0, le=100, description="网格透明度")
     color: str = Field(default="#ff0000", description="网格颜色")
 
@@ -39,6 +40,27 @@ class ScreenshotRequest(BaseRequest):
     color_mode: str = Field(default=None, description="颜色模式: grayscale(灰度)/color(原色)")
     grid: Optional[GridParams] = Field(default=None, description="网格参数")
     coordinate: Optional[CoordinateParams] = Field(default=None, description="坐标参数")
+    marker: Optional[Union["MarkerParams", List["MarkerParams"]]] = Field(default=None, description="标记参数，支持单个对象或数组")
+
+    @field_validator('marker', mode='before')
+    @classmethod
+    def normalize_marker(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, list):
+            return v
+        return [v]
+
+
+class MarkerParams(BaseModel):
+    """点击坐标标记参数 - 在截图上标记指定位置"""
+    x: float = Field(..., ge=0, le=100, description="标记点横坐标百分比(0-100)")
+    y: float = Field(..., ge=0, le=100, description="标记点纵坐标百分比(0-100)")
+    ring_radius: int = Field(default=12, ge=4, le=64, description="外圈空心圆半径(像素)")
+    ring_line_width: int = Field(default=2, ge=1, le=8, description="外圈线宽(像素)")
+    ring_color: str = Field(default="#FF0000", description="外圈颜色(HEX)")
+    dot_radius: int = Field(default=3, ge=1, le=16, description="中心实心圆半径(像素)")
+    dot_color: str = Field(default="#FF0000", description="中心实心圆颜色(HEX)")
 
 
 # ============ 操作相关 ============
@@ -81,6 +103,22 @@ class DragRequest(BaseRequest):
         default="background",
         description="操作方式: background(无感) / hijack(劫持,需确认)"
     )
+    target_window_id: Optional[int] = Field(
+        default=None,
+        description="目标窗口句柄（可选，设置后跨窗口拖拽，end_x/end_y 相对于此窗口）"
+    )
+    target_main_window_id: Optional[int] = Field(
+        default=None,
+        description="目标主窗口ID（可选，用于恢复目标窗口的最小化/隐藏状态）"
+    )
+
+    @model_validator(mode='after')
+    def force_hijack_for_cross_process(self):
+        """跨窗口拖拽必须使用 hijack 模式"""
+        if self.target_window_id is not None and self.target_window_id != self.window_id:
+            if self.action_method != "hijack":
+                object.__setattr__(self, 'action_method', 'hijack')
+        return self
 
 
 class MouseMoveRequest(BaseRequest):
@@ -146,6 +184,7 @@ class WaitRequest(BaseModel):
     window_id: Optional[int] = Field(default=None, description="窗口句柄（可选）")
     main_window_id: Optional[int] = Field(default=None, description="主窗口ID（可选）")
     duration_ms: int = Field(..., ge=1, description="等待时长(毫秒)")
+    random_range: int = Field(default=0, ge=0, description="随机波动范围(毫秒)，实际等待 duration_ms ± random_range")
 
 
 # ============ 窗口相关 ============
@@ -219,3 +258,17 @@ class ScrollScreenshotRequest(BaseRequest):
         if self.action_method != "hijack":
             object.__setattr__(self, 'action_method', 'hijack')
         return self
+
+
+# ============ 裁剪放大相关 ============
+
+class CropZoomRequest(BaseModel):
+    """裁剪放大请求 - 对已有图片进行裁剪并放大"""
+    ai_app_type: str = Field(..., description="AI应用类型")
+    session_id: str = Field(..., description="会话ID")
+    source_image_path: str = Field(..., description="原始图片路径（screenshot或scroll_screenshot返回的路径）")
+    center_x: float = Field(..., ge=0, le=100, description="裁剪区域中心点横坐标百分比(0-100)")
+    center_y: float = Field(..., ge=0, le=100, description="裁剪区域中心点纵坐标百分比(0-100)")
+    crop_width: float = Field(..., gt=0, le=100, description="裁剪区域总宽度百分比(0-100)")
+    crop_height: float = Field(..., gt=0, le=100, description="裁剪区域总高度百分比(0-100)")
+    zoom_scale: float = Field(default=2.0, ge=1.0, le=10.0, description="放大倍数(1.0=不放大)")

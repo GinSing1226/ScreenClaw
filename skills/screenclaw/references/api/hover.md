@@ -1,23 +1,9 @@
 ---
 name: hover
-description: 鼠标悬浮触发隐藏UI或tooltip
+description: 鼠标悬浮到指定坐标并停留，触发悬停效果。适用：触发tooltip/提示框、显示隐藏的UI元素（如滚动条），hover后立即截图捕获隐藏UI。不适用：需要点击（用click）、需要输入文本（用input_text）。
 ---
 
 # hover - 鼠标悬浮
-
-## 使用前必读
-
-### 使用目的和效果
-将鼠标移动到指定坐标并停留。可触发悬停效果（tooltip、提示框）、显示隐藏的UI元素。常配合截图使用：hover后再截图捕获隐藏UI。
-
-### 适用场景
-- 需要触发悬停提示或tooltip
-- 需要显示隐藏的UI元素
-- 常配合截图：hover后再截图捕获隐藏UI
-
-### 不适用场景
-- 需要点击 → 使用 `click`
-- 需要输入文本 → 使用 `input_text`
 
 ## 请求
 
@@ -56,21 +42,12 @@ Content-Type: application/json
 }
 ```
 
-## 错误码
-
-| 错误码 | 说明 | 解决方案 |
-|--------|------|----------|
-| `WINDOW_NOT_FOUND` | 窗口不存在 | 重新获取窗口列表 |
-| `OPERATION_FAILED` | 操作失败 | 1.换其他子窗口 2.大调坐标+网格参数重截图 3.Evaluator验证周边元素 4.仍失败才考虑hijack |
-
 ## 常见问题
 
 ### 遇到问题时的排查顺序
-1. **API成功但tooltip没出来** → 查阅 SKILL.md「常见问题排查」
+1. **API成功但tooltip没出来** → 按照 skill.md 步骤10 验证，换坐标重试
 2. **API调用失败** → 对照请求参数检查参数格式
 
 ### 操作技巧
-- **hover后截图**：常用场景是hover后再截图，捕获隐藏的UI元素
-- **调整停留时长**：某些UI元素需要更长的hover时间才会显示
-- **配合wait**：hover后添加短暂wait，确保UI元素完全显示后再截图
-- **批量操作**：在batch中使用 hover + wait + screenshot，一次性捕获隐藏UI
+- **组合hover+截图**：在batch中使用 hover + wait + screenshot，一次性捕获隐藏UI
+- **配合wait**：hover后添加短暂wait，确保UI元素完全显示后再截图。batch里的hover是半阻塞的，hover启动后，会立刻执行后续指令。所以必须用wait指令等待隐藏UI出现。不能依赖hover自身的duration

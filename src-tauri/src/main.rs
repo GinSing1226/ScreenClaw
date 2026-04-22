@@ -611,18 +611,20 @@ fn start_hotkey_listener(app_handle: tauri::AppHandle, menu: Menu<tauri::Wry>, s
             let mut current_hotkey = initial_hotkey;
             let (mut modifiers, mut vk) = parse_hotkey(&current_hotkey);
 
+            // 注册快捷键，失败则跳过（仍运行消息循环以接收 WM_DELEGATED_SYNC 等消息）
+            let mut hotkey_registered = false;
             unsafe {
-                if RegisterHotKey(ptr::null_mut(), 1, modifiers, vk) == 0 {
-                    println!("[HOTKEY] Failed to register hotkey: {}", current_hotkey);
-                    return;
+                if RegisterHotKey(ptr::null_mut(), 1, modifiers, vk) != 0 {
+                    hotkey_registered = true;
+                    eprintln!("[HOTKEY] Registered exit delegated hotkey: {}", current_hotkey);
+                } else {
+                    eprintln!("[HOTKEY] Failed to register hotkey: {}, continuing without hotkey", current_hotkey);
                 }
-                println!("[HOTKEY] Registered exit delegated hotkey: {}", current_hotkey);
             }
 
             // 记录线程 ID，供外部通知重注册
             let tid = unsafe { GetCurrentThreadId() };
             state.hotkey_thread_id.store(tid, std::sync::atomic::Ordering::SeqCst);
-            println!("[HOTKEY] Listener thread ID: {}", tid);
 
             // 写入线程 ID 到文件，供 Python 侧 PostThreadMessageW 使用
             let tid_path = get_data_dir().join(".hotkey_tid");
@@ -637,20 +639,18 @@ fn start_hotkey_listener(app_handle: tauri::AppHandle, menu: Menu<tauri::Wry>, s
 
                 if msg.message == WM_HOTKEY {
                     // 快捷键触发 → 退出托管
-                    println!("[HOTKEY] Exit delegated hotkey triggered");
                     let (port, token) = read_server_config(&config_path);
-                    println!("[HOTKEY] Using port={}, token_len={}", port, token.len());
                     match call_delegated_api("exit", port, &token) {
-                        Ok(resp) => {
-                            println!("[HOTKEY] API response: {}", resp);
+                        Ok(_) => {
                             update_delegated_ui(&app_handle, &menu, false);
                         }
-                        Err(e) => println!("[HOTKEY] Failed to exit delegated: {}", e),
+                        Err(e) => eprintln!("[HOTKEY] Failed to exit delegated: {}", e),
                     }
                 } else if msg.message == WM_REHOTKEY {
                     // 配置变更 → 重新注册快捷键
-                    println!("[HOTKEY] Re-register signal received");
-                    unsafe { UnregisterHotKey(ptr::null_mut(), 1); }
+                    if hotkey_registered {
+                        unsafe { UnregisterHotKey(ptr::null_mut(), 1); }
+                    }
 
                     // 从配置文件读取最新快捷键
                     if let Some(new_hotkey) = std::fs::read_to_string(&config_path)
@@ -672,22 +672,24 @@ fn start_hotkey_listener(app_handle: tauri::AppHandle, menu: Menu<tauri::Wry>, s
                     }
 
                     unsafe {
-                        if RegisterHotKey(ptr::null_mut(), 1, modifiers, vk) == 0 {
-                            println!("[HOTKEY] Failed to re-register hotkey: {}", current_hotkey);
-                            return;
+                        if RegisterHotKey(ptr::null_mut(), 1, modifiers, vk) != 0 {
+                            hotkey_registered = true;
+                            eprintln!("[HOTKEY] Re-registered hotkey: {}", current_hotkey);
+                        } else {
+                            hotkey_registered = false;
+                            eprintln!("[HOTKEY] Failed to re-register hotkey: {}", current_hotkey);
                         }
                     }
-                    println!("[HOTKEY] Re-registered hotkey: {}", current_hotkey);
                 } else if msg.message == WM_DELEGATED_SYNC {
                     // Python 通知：托管状态变更 → 读 config → 更新托盘图标
-                    println!("[HOTKEY] Delegated sync signal received");
                     let (_, _, is_active) = read_delegated_state(&config_path);
-                    println!("[HOTKEY] Delegated state from config: active={}", is_active);
                     update_delegated_ui(&app_handle, &menu, is_active);
                 }
             }
 
-            unsafe { UnregisterHotKey(ptr::null_mut(), 1); }
+            if hotkey_registered {
+                unsafe { UnregisterHotKey(ptr::null_mut(), 1); }
+            }
         }
 
         #[cfg(not(target_os = "windows"))]

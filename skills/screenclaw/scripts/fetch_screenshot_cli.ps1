@@ -1,4 +1,4 @@
-﻿param(
+param(
     [Parameter(Mandatory=$true)][string]$ApiUrl,
     [Parameter(Mandatory=$true)][string]$Token,
     [Parameter(Mandatory=$true)][int]$WindowId,
@@ -35,8 +35,10 @@ function Build-GridParams {
 
     $grid = @{}
     $coordinate = @{}
+    $marker = @{}
 
-    if ($Params.ContainsKey('grid_density')) { $grid['density'] = $Params['grid_density'] }
+    if ($Params.ContainsKey('grid_density_x')) { $grid['density_x'] = $Params['grid_density_x'] }
+    if ($Params.ContainsKey('grid_density_y')) { $grid['density_y'] = $Params['grid_density_y'] }
     if ($Params.ContainsKey('grid_opacity')) { $grid['opacity'] = $Params['grid_opacity'] }
     if ($Params.ContainsKey('grid_color')) { $grid['color'] = $Params['grid_color'] }
 
@@ -46,9 +48,52 @@ function Build-GridParams {
     if ($Params.ContainsKey('number_color')) { $coordinate['number_color'] = $Params['number_color'] }
     if ($Params.ContainsKey('number_opacity')) { $coordinate['number_opacity'] = $Params['number_opacity'] }
 
+    if ($Params.ContainsKey('marker_x') -and $Params.ContainsKey('marker_y')) {
+        $marker['x'] = $Params['marker_x']
+        $marker['y'] = $Params['marker_y']
+        if ($Params.ContainsKey('marker_ring_radius')) { $marker['ring_radius'] = $Params['marker_ring_radius'] }
+        if ($Params.ContainsKey('marker_ring_line_width')) { $marker['ring_line_width'] = $Params['marker_ring_line_width'] }
+        if ($Params.ContainsKey('marker_ring_color')) { $marker['ring_color'] = $Params['marker_ring_color'] }
+        if ($Params.ContainsKey('marker_dot_radius')) { $marker['dot_radius'] = $Params['marker_dot_radius'] }
+        if ($Params.ContainsKey('marker_dot_color')) { $marker['dot_color'] = $Params['marker_dot_color'] }
+    }
+
+    # 多标记点：收集 marker_N_x/marker_N_y 索引
+    $markerIndices = @{}
+    foreach ($key in @($Params.Keys)) {
+        if ($key -match '^marker_(\d+)_x$') {
+            $markerIndices[$Matches[1]] = $true
+        }
+    }
+    # 向后兼容：marker_x/marker_y → 索引 1
+    if ($Params.ContainsKey('marker_x') -and $Params.ContainsKey('marker_y') -and -not $markerIndices.ContainsKey('1')) {
+        $markerIndices['1'] = $true
+    }
+
+    $markerArray = @()
+    foreach ($idx in ($markerIndices.Keys | Sort-Object { [int]$_ })) {
+        $m = @{}
+        foreach ($f in @('x','y','ring_radius','ring_line_width','ring_color','dot_radius','dot_color')) {
+            $idxKey = "marker_${idx}_${f}"
+            if ($Params.ContainsKey($idxKey)) { $m[$f] = $Params[$idxKey] }
+        }
+        # 向后兼容：marker_x → marker_1_x
+        if ($idx -eq '1' -and -not $m.ContainsKey('x')) {
+            foreach ($f in @('x','y','ring_radius','ring_line_width','ring_color','dot_radius','dot_color')) {
+                $legacyKey = "marker_$f"
+                if ($Params.ContainsKey($legacyKey)) { $m[$f] = $Params[$legacyKey] }
+            }
+        }
+        if ($m.ContainsKey('x') -and $m.ContainsKey('y')) {
+            $markerArray += ,$m
+        }
+    }
+
     $result = @{}
     if ($grid.Count -gt 0) { $result['grid'] = $grid }
     if ($coordinate.Count -gt 0) { $result['coordinate'] = $coordinate }
+    if ($marker.Count -gt 0) { $result['marker'] = $marker }
+    if ($markerArray.Count -gt 0) { $result['marker'] = $markerArray }
     return $result
 }
 
@@ -144,7 +189,11 @@ $isLocal = $ApiUrl -match "localhost|127\.0\.0\.1|::1"
 
 if ($isLocal) {
     Write-Output $response.data.image_path
-    Write-Output "Next: Update todo status; Adjust grid params if coordinates are hard to read; Follow 3-role workflow; Check docs for other issues"
+    if ($gridParams.ContainsKey('marker')) {
+        Write-Output "Screenshot successful. Marker indicates the position of your input coordinates on the image. If result is unsatisfactory, refer to skill.md for parameter tuning."
+    } else {
+        Write-Output "Screenshot successful. If result is unsatisfactory, refer to skill.md for parameter tuning."
+    }
 }
 else {
     # 远程场景：服务端只返回base64，客户端自己生成符合规则的路径
@@ -181,7 +230,11 @@ else {
         $bytes = [Convert]::FromBase64String($response.data.image_base64)
         [System.IO.File]::WriteAllBytes($outputPath, $bytes)
         Write-Output $outputPath
-        Write-Output "Next: Update todo status; Adjust grid params if coordinates are hard to read; Follow 3-role workflow; Check docs for other issues"
+        if ($gridParams.ContainsKey('marker')) {
+            Write-Output "Screenshot successful. Marker indicates the position of your input coordinates on the image. If result is unsatisfactory, refer to skill.md for parameter tuning."
+        } else {
+            Write-Output "Screenshot successful. If result is unsatisfactory, refer to skill.md for parameter tuning."
+        }
     }
     catch {
         Write-Error "保存图片失败: $_"

@@ -83,7 +83,7 @@ def test_with_verification_window_not_found():
         call_args = mock_log_svc.log.call_args
         assert call_args[1]["window_id"] == 12345
         assert call_args[1]["result"]["success"] is False
-        assert "窗口不存在" in call_args[1]["result"]["message"]
+        assert "Window not found" in call_args[1]["result"]["message"]
 
 
 def test_with_verification_process_blocked():

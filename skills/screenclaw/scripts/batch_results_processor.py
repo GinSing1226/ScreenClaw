@@ -160,6 +160,6 @@ if __name__ == "__main__":
         print("\n".join(output))
         # If any screenshots were processed, add reminder
         if any(item.get("data", {}).get("image_path") or item.get("data", {}).get("image_base64") for item in results):
-            print("Next: Update todo status; Adjust grid params if coordinates are hard to read; Follow 3-role workflow; Check docs for other issues")
+            print("Screenshot successful. If result is unsatisfactory, refer to skill.md for parameter tuning.")
     else:
         print("Usage: python batch_results_processor.py <result_json_file>")

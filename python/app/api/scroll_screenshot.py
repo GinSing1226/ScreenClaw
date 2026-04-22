@@ -127,7 +127,7 @@ async def scroll_screenshot(
             result={"success": False, "message": "Cannot get window rect"},
             client_ip=request.client_ip
         )
-        return create_error_response("INTERNAL_ERROR", "Cannot get window rect")
+        return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle. The window may have been closed or minimized. Refer to skill.md for troubleshooting.")
 
     virtual_width = window_rect[2] - window_rect[0]
     virtual_height = window_rect[3] - window_rect[1]

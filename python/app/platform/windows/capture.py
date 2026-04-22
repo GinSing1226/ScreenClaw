@@ -200,7 +200,7 @@ class WindowsCapture:
                 return CaptureResult(
                     success=False,
                     image=None,
-                    error="PrintWindow 调用失败",
+                    error="PrintWindow failed. The target window may be invalid or unresponsive. Use get_window_list to get a valid window_id and retry.",
                     method=""
                 )
 

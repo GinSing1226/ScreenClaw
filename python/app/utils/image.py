@@ -40,6 +40,65 @@ def get_data_dir() -> Path:
     return get_project_root() / "data"
 
 
+def validate_source_image_path(source_image_path: str) -> Optional[str]:
+    """校验源图片路径是否在 data 目录内
+
+    Returns:
+        None 表示校验通过，否则返回错误消息
+    """
+    data_root = get_data_dir().resolve()
+    source = Path(source_image_path).resolve()
+    if not str(source).startswith(str(data_root)):
+        return f"Access denied: path must be within data directory"
+    return None
+
+
+def crop_and_zoom(
+    image: Image.Image,
+    center_x: float,
+    center_y: float,
+    crop_width: float,
+    crop_height: float,
+    zoom_scale: float
+) -> Image.Image:
+    """对图片进行裁剪并放大
+
+    Args:
+        image: 原始图片
+        center_x: 裁剪区域中心点横坐标百分比 (0-100)
+        center_y: 裁剪区域中心点纵坐标百分比 (0-100)
+        crop_width: 裁剪区域总宽度百分比 (0-100)
+        crop_height: 裁剪区域总高度百分比 (0-100)
+        zoom_scale: 放大倍数 (1.0=不放大)
+
+    Returns:
+        裁剪放大后的图片
+
+    Raises:
+        ValueError: 裁剪区域完全超出图片边界
+    """
+    img_w, img_h = image.size
+    center_x_px = img_w * center_x / 100
+    center_y_px = img_h * center_y / 100
+    crop_w_px = img_w * crop_width / 100
+    crop_h_px = img_h * crop_height / 100
+
+    left = max(0, center_x_px - crop_w_px / 2)
+    top = max(0, center_y_px - crop_h_px / 2)
+    right = min(img_w, center_x_px + crop_w_px / 2)
+    bottom = min(img_h, center_y_px + crop_h_px / 2)
+
+    if right <= left or bottom <= top:
+        raise ValueError(
+            f"Crop area is completely outside the image. center: ({center_x}, {center_y}), image size: {img_w}x{img_h}."
+        )
+
+    cropped = image.crop((left, top, right, bottom))
+    new_w = int(cropped.width * zoom_scale)
+    new_h = int(cropped.height * zoom_scale)
+    return cropped.resize((new_w, new_h), Image.LANCZOS)
+
+
 def compress_image(
     image: Image.Image,
     quality: int = 85,
@@ -161,6 +220,20 @@ def generate_scroll_screenshot_filename() -> str:
     time_str = datetime.now().strftime("%H%M%S")
     rand_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
     return f"scroll_screenshot_{time_str}_{rand_str}.png"
+
+
+def generate_crop_zoom_filename() -> str:
+    """
+    生成裁剪放大图片文件名
+
+    格式: crop_zoom_hhmmss_rand4.png
+
+    Returns:
+        文件名
+    """
+    time_str = datetime.now().strftime("%H%M%S")
+    rand_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
+    return f"crop_zoom_{time_str}_{rand_str}.png"
 
 
 def generate_data_dir(

@@ -62,8 +62,7 @@ class OperationResponse(BaseResponse):
 
 class HealthData(BaseModel):
     """健康检查数据"""
-    version: str = Field(default="1.0.0", description="版本号")
-    uptime_seconds: int = Field(default=0, description="运行时长(秒)")
+    server_time: str = Field(default="", description="服务器当前时间 (yyyy-mm-dd HH:mm:ss)")
 
 
 class HealthResponse(BaseResponse):
@@ -112,16 +111,17 @@ class ScrollScreenshotResponse(BaseResponse):
 # ============ 错误码定义 ============
 
 ERROR_CODES = {
-    "WINDOW_NOT_FOUND": {"zh": "窗口不存在", "en": "Window not found"},
-    "PROCESS_BLOCKED": {"zh": "进程在禁止清单中", "en": "Process is blocked"},
-    "SCREENSHOT_FAILED": {"zh": "截图失败", "en": "Screenshot failed"},
-    "OPERATION_FAILED": {"zh": "操作失败", "en": "Operation failed"},
-    "USER_DENIED": {"zh": "用户拒绝操作", "en": "User denied"},
-    "TIMEOUT": {"zh": "操作超时", "en": "Operation timeout"},
-    "AUTH_FAILED": {"zh": "认证失败", "en": "Authentication failed"},
-    "INVALID_PARAMS": {"zh": "参数无效", "en": "Invalid parameters"},
-    "INTERNAL_ERROR": {"zh": "内部错误", "en": "Internal error"},
-    "UNSUPPORTED_MODE": {"zh": "不支持的操作模式", "en": "Unsupported operation mode"},
+    "WINDOW_NOT_FOUND": {"zh": "窗口不存在", "en": "Window not found. The window may have been closed. Use get_window_list to get a valid window_id. Refer to skill.md for troubleshooting."},
+    "PROCESS_BLOCKED": {"zh": "进程在禁止清单中", "en": "Process is blocked. This process is in the blocked list and operations are not allowed. Refer to skill.md for troubleshooting."},
+    "SCREENSHOT_FAILED": {"zh": "截图失败", "en": "Screenshot failed. Refer to skill.md for troubleshooting."},
+    "OPERATION_FAILED": {"zh": "操作失败", "en": "Operation failed. Refer to skill.md for troubleshooting."},
+    "USER_DENIED": {"zh": "用户拒绝操作", "en": "User denied the operation."},
+    "TIMEOUT": {"zh": "操作超时", "en": "Operation timeout. The target window may not be responding. Refer to skill.md for troubleshooting."},
+    "AUTH_FAILED": {"zh": "认证失败", "en": "Authentication failed."},
+    "INVALID_PARAMS": {"zh": "参数无效", "en": "Invalid parameters. Refer to skill.md for parameter details."},
+    "INTERNAL_ERROR": {"zh": "内部错误", "en": "Internal error. Refer to skill.md for troubleshooting."},
+    "UNSUPPORTED_MODE": {"zh": "不支持的操作模式", "en": "Unsupported operation mode for this action. Refer to skill.md for supported modes."},
+    "FILE_NOT_FOUND": {"zh": "图片文件不存在", "en": "Image file not found."},
 }
 
 

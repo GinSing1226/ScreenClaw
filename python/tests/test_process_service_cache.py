@@ -4,7 +4,7 @@ ProcessService缓存功能单元测试
 """
 import pytest
 from app.services.process_service import ProcessService
-from unittest.mock import patch, Mock, MagicMock, call
+from unittest.mock import patch, Mock
 
 
 @pytest.mark.parametrize("process_id,expected_name", [
@@ -15,14 +15,15 @@ def test_get_process_name_cached(process_id, expected_name):
     """Test that process name lookup is cached"""
     process_service = ProcessService()
 
-    # Mock win32api module functions
+    def mock_query(handle, flags, buf, size):
+        buf.value = f"C:\\Windows\\{expected_name}"
+
     with patch('app.services.process_service.win32api.OpenProcess') as mock_open, \
-         patch('app.services.process_service.win32process.GetModuleFileNameEx') as mock_get_module, \
+         patch('ctypes.windll.kernel32.QueryFullProcessImageNameW', side_effect=mock_query), \
          patch('app.services.process_service.win32api.CloseHandle'):
 
         mock_handle = Mock()
         mock_open.return_value = mock_handle
-        mock_get_module.return_value = f"C:\\Windows\\{expected_name}"
 
         # First call
         result1 = process_service._get_process_name_impl(process_id)
@@ -43,11 +44,13 @@ def test_get_process_by_window_id_uses_cache():
     """Test that get_process_by_window_id benefits from cached process names"""
     process_service = ProcessService()
 
-    # Mock win32gui and win32process
+    def mock_query(handle, flags, buf, size):
+        buf.value = "C:\\Windows\\test.exe"
+
     with patch('app.services.process_service.win32gui') as mock_win32gui, \
          patch('app.services.process_service.win32process') as mock_win32process, \
          patch('app.services.process_service.win32api.OpenProcess') as mock_open, \
-         patch('app.services.process_service.win32process.GetModuleFileNameEx') as mock_get_module, \
+         patch('ctypes.windll.kernel32.QueryFullProcessImageNameW', side_effect=mock_query), \
          patch('app.services.process_service.win32api.CloseHandle'):
 
         # Setup mocks
@@ -57,7 +60,6 @@ def test_get_process_by_window_id_uses_cache():
 
         mock_handle = Mock()
         mock_open.return_value = mock_handle
-        mock_get_module.return_value = "C:\\Windows\\test.exe"
 
         # First call
         result1 = process_service.get_process_by_window_id(12345)
@@ -82,14 +84,15 @@ def test_clear_cache_method():
     assert hasattr(process_service, 'clear_cache')
     assert callable(process_service.clear_cache)
 
-    # Mock win32api functions
+    def mock_query(handle, flags, buf, size):
+        buf.value = "C:\\Windows\\test.exe"
+
     with patch('app.services.process_service.win32api.OpenProcess') as mock_open, \
-         patch('app.services.process_service.win32process.GetModuleFileNameEx') as mock_get_module, \
+         patch('ctypes.windll.kernel32.QueryFullProcessImageNameW', side_effect=mock_query), \
          patch('app.services.process_service.win32api.CloseHandle'):
 
         mock_handle = Mock()
         mock_open.return_value = mock_handle
-        mock_get_module.return_value = "C:\\Windows\\test.exe"
 
         # First call
         result1 = process_service._get_process_name_impl(1234)
@@ -123,26 +126,20 @@ def test_cache_stores_multiple_processes():
     """Test that cache can store multiple different process names"""
     process_service = ProcessService()
 
-    # Mock win32api functions
+    call_count = [0]
+    names = ["test1.exe", "test2.exe", "test3.exe"]
+
+    def mock_query(handle, flags, buf, size):
+        idx = call_count[0]
+        call_count[0] += 1
+        buf.value = f"C:\\Windows\\{names[idx]}"
+
     with patch('app.services.process_service.win32api.OpenProcess') as mock_open, \
-         patch('app.services.process_service.win32process.GetModuleFileNameEx') as mock_get_module, \
+         patch('ctypes.windll.kernel32.QueryFullProcessImageNameW', side_effect=mock_query), \
          patch('app.services.process_service.win32api.CloseHandle'):
 
         mock_handle = Mock()
-
-        def mock_get_module_filename(handle, module_id):
-            # Return different names based on call count
-            call_count = mock_get_module.call_count
-            if call_count == 1:
-                return "C:\\Windows\\test1.exe"
-            elif call_count == 2:
-                return "C:\\Windows\\test2.exe"
-            elif call_count == 3:
-                return "C:\\Windows\\test3.exe"
-            return "C:\\Windows\\unknown.exe"
-
         mock_open.return_value = mock_handle
-        mock_get_module.side_effect = mock_get_module_filename
 
         # Call with different process IDs
         result1 = process_service._get_process_name_impl(1001)

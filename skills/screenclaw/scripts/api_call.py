@@ -51,6 +51,9 @@ def encode_unicode(value):
     return value
 
 
+# 始终保持 string 类型的参数名
+STRING_KEYS = {'text', 'key', 'keyword', 'action', 'newline_key'}
+
 def parse_params(param_args):
     """解析命令行参数为字典"""
     params = {}
@@ -62,7 +65,7 @@ def parse_params(param_args):
                 value = True
             elif value.lower() == 'false':
                 value = False
-            elif value.isdigit():
+            elif value.isdigit() and key not in STRING_KEYS:
                 value = int(value)
             elif value.startswith('[') or value.startswith('{'):
                 # JSON数组或对象，尝试解析

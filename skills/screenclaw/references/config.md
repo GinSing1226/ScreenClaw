@@ -1,89 +1,64 @@
 ---
 name: screenclaw-config
-description: ScreenClaw连接配置说明
+description: ScreenClaw连接配置说明，以及接口重要的公共参数说明：ai_app_type/session_id
 ---
 
 # ScreenClaw 连接配置
 
-1. 请求地址
-
+1. 请求地址：
 ```
 http://{host}:{port}
 ```
 
-2. 请求Token
+2. 请求Token：
 ```
 {token}
 ```
+
 - 默认请求地址：`http://localhost:12261`
 - 由用户提供，提供后，你可以保存到此。地址和鉴权信息在screenclaw监控面板上。
 - **如果获取不到请求地址、token，直接向用户索取，不要猜测或使用默认值，不要直接调用脚本**
 
 ## AI应用类型 (ai_app_type)
-
-**你必须根据当前调用的 AI 应用类型填写正确的值**
-
-### 常见AI应用对应的值
-
-| AI 应用 | ai_app_type 值 |
-|---------|---------------|
-| Claude Code | `claude_code` |
-| openclaw | `openclaw` |
-| ChatGPT | `chatgpt` |
-| 其他应用 | 应用名称（小写下划线） |
+应用类型用于图片/日志保存路径。以便用户追溯。**你必须根据当前调用的 AI 应用类型填写正确的值**
 
 ### 如何确定你的值
 如果你不确定当前是什么AI应用，检查以下标识：
 - 产品名称（Claude Code、openclaw等）
 - 运行环境（浏览器、IDE、命令行）
-- 使用小写字母和下划线命名
+- 命名规则：使用小写字母和下划线命名
 
 ### 示例
-```python
-# 如果是 Claude Code 在调用
-api_call(ai_app_type="claude_code", ...)
+| AI 应用 | ai_app_type 值 |
+|---------|---------------|
+| Claude Code | `claude_code` |
+| openclaw | `openclaw` |
+| codex | `codex` |
+| 其他应用 | 应用名称（小写下划线） |
 
-# 如果是 ChatGPT 在调用
-api_call(ai_app_type="chatgpt", ...)
+## 会话ID (session_id) 
 
-```
+会话id用于图片/日志保存路径、文件命名，以便用户追溯。**你必须在整个会话过程中使用同一个 session_id**
 
-### 命名规则
-- 小写字母
-- 使用下划线分隔单词
-- 简洁明了，能识别应用类型
+### 生成规则
 
-## 会话ID (session_id) - 强制要求
+1. 格式：`{应用名}_{日期}_{时间}`
 
-**你必须在整个会话过程中使用同一个 session_id**
+2. 格式规则
+- 只能使用英文、数字和下划线。否则路径可能乱码。
+- 应用名： `ai_app_type`
+- 日期：yyyymmdd格式。
+- 时间：hhmmss格式。
+- 从上下文里获取日期、时间。若无，可使用 `health.md` 的接口返回的具体时间
 
-### 如何生成 session_id
-
-格式：`{应用名}_{日期}_{时间戳}`
-
-**重要**：
-- 必须使用英文、数字和下划线
-- 不要使用中文、连字符（-）或其他特殊符号
-
-示例：
-```
-claude_code_20260329_143025
-kimi_code_20260329_143025
-chatgpt_20260329_143025
-```
-
-### 为什么必须使用英文
-
-使用中文session_id（如"【第一次尝试】"）会导致：
-- PowerShell脚本处理路径时出错
-- 目录名编码问题
-- 图片保存失败
+示例：claude_code_20260329_143025
 
 ### 使用规则
 
 1. **会话开始时**：生成一个唯一的 session_id（仅英文数字）
 2. **整个会话期间**：所有 API 调用都使用这个 session_id
-3. **绝对不要**：每次调用生成新的 session_id
+3. **绝对不要**：每次调用接口生成新的 session_id
+4. **用户优先**：用户明确提出开始全新任务，你才可生成新会话id
 
 ### 正确示例
 ```

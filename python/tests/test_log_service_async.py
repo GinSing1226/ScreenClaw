@@ -65,7 +65,7 @@ async def test_log_batch_write(temp_log_dir):
     await asyncio.sleep(2)
 
     # Verify all logs were written
-    log_files = list(Path(temp_log_dir).glob("test-session1-*.jsonl"))
+    log_files = list(Path(temp_log_dir).glob("test__session1__*.jsonl"))
 
     assert len(log_files) == 1, f"Expected 1 log file, found {len(log_files)}"
 
@@ -102,7 +102,7 @@ async def test_log_flush_on_shutdown(temp_log_dir):
     log_service.shutdown()
 
     # Verify log was written
-    log_files = list(Path(temp_log_dir).glob("test-session2-*.jsonl"))
+    log_files = list(Path(temp_log_dir).glob("test__session2__*.jsonl"))
     assert len(log_files) == 1
 
     with open(log_files[0], 'r', encoding='utf-8') as f:

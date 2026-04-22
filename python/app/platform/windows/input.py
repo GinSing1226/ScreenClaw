@@ -49,6 +49,9 @@ MODIFIER_VKS = {0x11, 0x12, 0x10, 0x5B}  # Ctrl, Alt, Shift, Win
 class WindowsInputInjector:
     """Windows操作注入 - background/hijack/delegated 模式 + 子进程隔离"""
 
+    def __init__(self):
+        self._last_error: Optional[str] = None
+
     # 按键名 → VK码
     _key_map = {
         "enter": 0x0D, "return": 0x0D,
@@ -95,6 +98,12 @@ class WindowsInputInjector:
             return config_service.is_delegated_active()
         except Exception:
             return False
+
+    def _fail_result(self, operation: str, method: str) -> InjectResult:
+        error = f"{operation} failed"
+        if self._last_error:
+            error += f": {self._last_error}"
+        return InjectResult(False, error, method)
 
     def _effective_method(self, action_method: str) -> str:
         """获取有效的操作方法：托管模式时强制转为 delegated
@@ -406,6 +415,86 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
         timeout = max(20, int(duration_ms / 1000) + 15)
         return self._run_subprocess(code, timeout=timeout)
 
+    def _delegated_drag_cross_process(self, source_hwnd: int, target_hwnd: int,
+                                      screen_sx: int, screen_sy: int,
+                                      screen_ex: int, screen_ey: int,
+                                      duration_ms: int = 500) -> bool:
+        """Delegated 跨窗口拖拽 - 激活源窗口 + midpoint激活目标窗口 + mouse_event"""
+        duration = duration_ms / 1000.0
+        code = f'''
+import win32gui, win32api, win32con, ctypes, time
+
+source_hwnd = {source_hwnd}
+target_hwnd = {target_hwnd}
+screen_sx = {screen_sx}
+screen_sy = {screen_sy}
+screen_ex = {screen_ex}
+screen_ey = {screen_ey}
+duration = {duration}
+
+source_main_hwnd = ctypes.windll.user32.GetAncestor(source_hwnd, 2) or source_hwnd
+target_main_hwnd = ctypes.windll.user32.GetAncestor(target_hwnd, 2) or target_hwnd
+current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+
+# 确保目标窗口可见（不激活，仅恢复）
+if win32gui.IsIconic(target_main_hwnd):
+    win32gui.ShowWindow(target_main_hwnd, win32con.SW_RESTORE)
+    time.sleep(0.2)
+elif not win32gui.IsWindowVisible(target_main_hwnd):
+    win32gui.ShowWindow(target_main_hwnd, win32con.SW_SHOW)
+    time.sleep(0.1)
+
+# 激活源窗口
+if win32gui.IsIconic(source_main_hwnd):
+    win32gui.ShowWindow(source_main_hwnd, win32con.SW_RESTORE)
+    time.sleep(0.2)
+source_tid = ctypes.windll.user32.GetWindowThreadProcessId(source_main_hwnd, None)
+ctypes.windll.user32.AttachThreadInput(current_tid, source_tid, True)
+try:
+    win32gui.SetForegroundWindow(source_main_hwnd)
+except Exception:
+    try:
+        win32gui.ShowWindow(source_main_hwnd, win32con.SW_SHOW)
+        ctypes.windll.user32.BringWindowToTop(source_main_hwnd)
+    except Exception:
+        pass
+time.sleep(0.3)
+
+win32api.SetCursorPos((screen_sx, screen_sy))
+time.sleep(0.1)
+
+MOUSEEVENTF_LEFTDOWN = 0x0002
+MOUSEEVENTF_LEFTUP = 0x0004
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+time.sleep(0.05)
+
+# 分步移动到终点
+steps = 10
+step_delay = duration / steps
+mid = steps // 2
+for i in range(1, steps + 1):
+    progress = i / steps
+    cx = int(screen_sx + (screen_ex - screen_sx) * progress)
+    cy = int(screen_sy + (screen_ey - screen_sy) * progress)
+    win32api.SetCursorPos((cx, cy))
+    # 在 midpoint 激活目标窗口，使其浮到源窗口之上
+    if i == mid:
+        target_tid = ctypes.windll.user32.GetWindowThreadProcessId(target_main_hwnd, None)
+        ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
+        try:
+            win32gui.SetForegroundWindow(target_main_hwnd)
+        except Exception:
+            pass
+        time.sleep(0.15)
+    time.sleep(step_delay)
+
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+
+ctypes.windll.user32.AttachThreadInput(current_tid, source_tid, False)
+'''
+        timeout = max(20, int(duration_ms / 1000) + 15)
+        return self._run_subprocess(code, timeout=timeout)
+
     def _delegated_mouse_move(self, hwnd: int, delta_x: int, delta_y: int,
                               duration_ms: int = 300) -> bool:
         """Delegated 鼠标移动 - mouse_event 分步相对移动 + 不恢复状态"""
@@ -673,14 +762,14 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
         if effective == "delegated":
             if self._delegated_click(hwnd, virtual_x, virtual_y):
                 return InjectResult(True, None, "delegated")
-            return InjectResult(False, "Click operation failed", "delegated")
+            return self._fail_result("Click", "delegated")
         if effective == "hijack":
             if self._hijack_click(hwnd, virtual_x, virtual_y, restore_state=True):
                 return InjectResult(True, None, "hijack")
-            return InjectResult(False, "Click operation failed", "hijack")
+            return self._fail_result("Click", "hijack")
         if self._background_click(hwnd, virtual_x, virtual_y):
             return InjectResult(True, None, "background")
-        return InjectResult(False, "Click operation failed", "background")
+        return self._fail_result("Click", "background")
 
     def right_click(self, hwnd: int, physical_x: int, physical_y: int,
                     virtual_x: int, virtual_y: int,
@@ -689,15 +778,15 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
         if effective == "delegated":
             if self._delegated_right_click(hwnd, virtual_x, virtual_y):
                 return InjectResult(True, None, "delegated")
-            return InjectResult(False, "Right-click operation failed", "delegated")
+            return self._fail_result("Right-click", "delegated")
         if effective == "hijack":
             screen_x, screen_y = self._client_to_screen(hwnd, virtual_x, virtual_y)
             if self._hijack_right_click(hwnd, screen_x, screen_y, restore_state=True):
                 return InjectResult(True, None, "hijack")
-            return InjectResult(False, "Right-click operation failed", "hijack")
+            return self._fail_result("Right-click", "hijack")
         if self._background_right_click(hwnd, virtual_x, virtual_y):
             return InjectResult(True, None, "background")
-        return InjectResult(False, "Right-click operation failed", "background")
+        return self._fail_result("Right-click", "background")
 
     def long_press(self, hwnd: int, physical_x: int, physical_y: int,
                    virtual_x: int, virtual_y: int, duration_ms: int,
@@ -706,16 +795,16 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
         if effective == "delegated":
             if self._delegated_long_press(hwnd, virtual_x, virtual_y, duration_ms):
                 return InjectResult(True, None, "delegated")
-            return InjectResult(False, "Long press operation failed", "delegated")
+            return self._fail_result("Long press", "delegated")
         if effective == "hijack":
             screen_x, screen_y = self._client_to_screen(hwnd, virtual_x, virtual_y)
             if self._hijack_long_press(hwnd, screen_x, screen_y, duration_ms, restore_state=True):
                 return InjectResult(True, None, "hijack")
-            return InjectResult(False, "Long press operation failed", "hijack")
+            return self._fail_result("Long press", "hijack")
         # background 使用 virtual 坐标
         if self._background_long_press(hwnd, virtual_x, virtual_y, duration_ms):
             return InjectResult(True, None, "background")
-        return InjectResult(False, "Long press operation failed", "background")
+        return self._fail_result("Long press", "background")
 
     def swipe(self, hwnd: int,
               physical_sx: int, physical_sy: int, physical_ex: int, physical_ey: int,
@@ -725,38 +814,46 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
         if effective == "delegated":
             if self._delegated_swipe(hwnd, virtual_sx, virtual_sy, virtual_ex, virtual_ey):
                 return InjectResult(True, None, "delegated")
-            return InjectResult(False, "Swipe operation failed", "delegated")
+            return self._fail_result("Swipe", "delegated")
         if effective == "hijack":
             ss = self._client_to_screen(hwnd, virtual_sx, virtual_sy)
             se = self._client_to_screen(hwnd, virtual_ex, virtual_ey)
             if self._hijack_swipe(hwnd, ss[0], ss[1], se[0], se[1], restore_state=True):
                 return InjectResult(True, None, "hijack")
-            return InjectResult(False, "Swipe operation failed", "hijack")
+            return self._fail_result("Swipe", "hijack")
         # background 使用 virtual 坐标（与 click 一致，修复 DPI 缩放问题）
         if self._background_swipe(hwnd, virtual_sx, virtual_sy, virtual_ex, virtual_ey):
             return InjectResult(True, None, "background")
-        return InjectResult(False, "Swipe operation failed", "background")
+        return self._fail_result("Swipe", "background")
 
     def drag(self, hwnd: int,
              physical_sx: int, physical_sy: int, physical_ex: int, physical_ey: int,
              virtual_sx: int, virtual_sy: int, virtual_ex: int, virtual_ey: int,
              duration_ms: int = 500,
-             action_method: str = "background") -> InjectResult:
+             action_method: str = "background",
+             target_hwnd: int = None) -> InjectResult:
         effective = self._effective_method(action_method)
         if effective == "delegated":
+            if target_hwnd:
+                ss = self._client_to_screen(hwnd, virtual_sx, virtual_sy)
+                se = self._client_to_screen(target_hwnd, virtual_ex, virtual_ey)
+                if self._delegated_drag_cross_process(hwnd, target_hwnd, ss[0], ss[1], se[0], se[1], duration_ms):
+                    return InjectResult(True, None, "delegated")
+                return self._fail_result("Drag", "delegated")
             if self._delegated_drag(hwnd, virtual_sx, virtual_sy, virtual_ex, virtual_ey, duration_ms):
                 return InjectResult(True, None, "delegated")
-            return InjectResult(False, "Drag operation failed", "delegated")
+            return self._fail_result("Drag", "delegated")
         if effective == "hijack":
+            end_hwnd = target_hwnd if target_hwnd else hwnd
             ss = self._client_to_screen(hwnd, virtual_sx, virtual_sy)
-            se = self._client_to_screen(hwnd, virtual_ex, virtual_ey)
-            if self._hijack_drag(hwnd, ss[0], ss[1], se[0], se[1], duration_ms, restore_state=True):
+            se = self._client_to_screen(end_hwnd, virtual_ex, virtual_ey)
+            if self._hijack_drag(hwnd, ss[0], ss[1], se[0], se[1], duration_ms, restore_state=True, target_hwnd=target_hwnd):
                 return InjectResult(True, None, "hijack")
-            return InjectResult(False, "Drag operation failed", "hijack")
-        # background 使用 virtual 坐标
+            return self._fail_result("Drag", "hijack")
+        # background 使用 virtual 坐标（不支持跨进程，由 model validator 强制 hijack）
         if self._background_drag(hwnd, virtual_sx, virtual_sy, virtual_ex, virtual_ey, duration_ms):
             return InjectResult(True, None, "background")
-        return InjectResult(False, "Drag operation failed", "background")
+        return self._fail_result("Drag", "background")
 
     def mouse_move(self, hwnd: int,
                    delta_x: int, delta_y: int,
@@ -766,11 +863,11 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
         if effective == "delegated":
             if self._delegated_mouse_move(hwnd, delta_x, delta_y, duration_ms):
                 return InjectResult(True, None, "delegated")
-            return InjectResult(False, "Mouse move operation failed", "delegated")
+            return self._fail_result("Mouse move", "delegated")
         if effective == "hijack":
             if self._hijack_mouse_move(hwnd, delta_x, delta_y, duration_ms, restore_state=True):
                 return InjectResult(True, None, "hijack")
-            return InjectResult(False, "Mouse move operation failed", "hijack")
+            return self._fail_result("Mouse move", "hijack")
         return InjectResult(False, "Mouse move does not support background mode", "background")
 
     def scroll(self, hwnd: int, physical_x: int, physical_y: int,
@@ -780,15 +877,15 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
         if effective == "delegated":
             if self._delegated_scroll(hwnd, virtual_x, virtual_y, delta):
                 return InjectResult(True, None, "delegated")
-            return InjectResult(False, "Scroll operation failed", "delegated")
+            return self._fail_result("Scroll", "delegated")
         if effective == "hijack":
             screen_x, screen_y = self._client_to_screen(hwnd, virtual_x, virtual_y)
             if self._hijack_scroll(hwnd, screen_x, screen_y, delta, restore_state=True):
                 return InjectResult(True, None, "hijack")
-            return InjectResult(False, "Scroll operation failed", "hijack")
+            return self._fail_result("Scroll", "hijack")
         if self._background_scroll(hwnd, virtual_x, virtual_y, delta):
             return InjectResult(True, None, "background")
-        return InjectResult(False, "Scroll operation failed", "background")
+        return self._fail_result("Scroll", "background")
 
     def hover(self, hwnd: int, physical_x: int, physical_y: int,
               virtual_x: int, virtual_y: int, duration_ms: int,
@@ -808,19 +905,19 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
         if effective == "delegated":
             if self._delegated_hover(hwnd, virtual_x, virtual_y, duration_ms, semi_blocking=True):
                 return InjectResult(True, None, "delegated")
-            return InjectResult(False, "Hover operation failed", "delegated")
+            return self._fail_result("Hover", "delegated")
         if effective == "hijack":
             screen_x, screen_y = self._client_to_screen(hwnd, virtual_x, virtual_y)
             success = self._hijack_hover(hwnd, screen_x, screen_y, duration_ms,
                                          semi_blocking=True, restore_state=True)
             if success:
                 return InjectResult(True, None, "hijack")
-            return InjectResult(False, "Hover operation failed", "hijack")
+            return self._fail_result("Hover", "hijack")
         # background 也是半阻塞
         success = self._background_hover(hwnd, virtual_x, virtual_y, duration_ms, semi_blocking=True)
         if success:
             return InjectResult(True, None, "background")
-        return InjectResult(False, "Hover operation failed", "background")
+        return self._fail_result("Hover", "background")
 
     def input_text(self, hwnd: int, physical_x: int = None, physical_y: int = None,
                    virtual_x: int = None, virtual_y: int = None, text: str = None, newline_key: str = None,
@@ -840,7 +937,7 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
         if effective == "delegated":
             if self._delegated_input_text(hwnd, virtual_x, virtual_y, text, has_coord):
                 return InjectResult(True, None, "delegated")
-            return InjectResult(False, "Input text operation failed", "delegated")
+            return self._fail_result("Input text", "delegated")
         if effective == "hijack":
             # hijack 需要屏幕坐标
             if has_coord:
@@ -851,7 +948,7 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
                 # 无坐标 hijack，直接执行
                 if self._hijack_input_text(hwnd, None, None, text, restore_state=True):
                     return InjectResult(True, None, "hijack")
-            return InjectResult(False, "Input text operation failed", "hijack")
+            return self._fail_result("Input text", "hijack")
         # background 使用 virtual 坐标
         import logging
         logger = logging.getLogger(__name__)
@@ -862,7 +959,7 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
             # 无坐标 background，直接输入
             if self._background_input_text(hwnd, None, None, text, newline_key):
                 return InjectResult(True, None, "background")
-        return InjectResult(False, "Input text operation failed", "background")
+        return self._fail_result("Input text", "background")
 
     def key_press(self, hwnd: int, key: str,
                   physical_x: int = None, physical_y: int = None,
@@ -885,17 +982,17 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
             if self._delegated_key_press(hwnd, key, virtual_x, virtual_y,
                                        duration_ms, non_blocking):
                 return InjectResult(True, None, "delegated")
-            return InjectResult(False, "Key press operation failed", "delegated")
+            return self._fail_result("Key press", "delegated")
         if effective == "hijack":
             if self._hijack_key_press(hwnd, key, virtual_x, virtual_y,
                                       duration_ms, non_blocking, restore_state=True):
                 return InjectResult(True, None, "hijack")
-            return InjectResult(False, "Key press operation failed", "hijack")
+            return self._fail_result("Key press", "hijack")
         # background 使用 virtual 坐标
         if self._background_key_press(hwnd, key, virtual_x, virtual_y,
                                       duration_ms, non_blocking):
             return InjectResult(True, None, "background")
-        return InjectResult(False, "Key press operation failed", "background")
+        return self._fail_result("Key press", "background")
 
     # ============ background 实现（无感操作）============
 
@@ -1370,11 +1467,18 @@ ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
         return self._run_subprocess(code, timeout=15)
 
     def _hijack_drag(self, hwnd: int, sx: int, sy: int, ex: int, ey: int,
-                     duration_ms: int = 500, restore_state: bool = True) -> bool:
+                     duration_ms: int = 500, restore_state: bool = True,
+                     target_hwnd: int = None) -> bool:
         """Hijack 拖拽 - 10步插值 + duration_ms 参数化 + win32api（支持多屏）"""
         main_hwnd = win32gui.GetParent(hwnd) or hwnd
         duration = duration_ms / 1000.0
         restore_code = self._build_restore_code(restore_state)
+
+        # 跨窗口拖拽：预计算目标主窗口
+        target_main_hwnd = "None"
+        if target_hwnd:
+            target_main_hwnd = f"ctypes.windll.user32.GetAncestor({target_hwnd}, 2) or {target_hwnd}"
+
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
 
@@ -1387,6 +1491,7 @@ sy = {sy}
 ex = {ex}
 ey = {ey}
 duration = {duration}
+target_main_hwnd = {target_main_hwnd}
 
 # 仅在窗口最小化或隐藏时才恢复
 if win32gui.IsIconic(main_hwnd):
@@ -1395,6 +1500,15 @@ if win32gui.IsIconic(main_hwnd):
 elif not win32gui.IsWindowVisible(main_hwnd):
     win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
     time.sleep(0.1)
+
+# 跨窗口拖拽：提前确保目标窗口可见（不激活，仅恢复）
+if target_main_hwnd:
+    if win32gui.IsIconic(target_main_hwnd):
+        win32gui.ShowWindow(target_main_hwnd, win32con.SW_RESTORE)
+        time.sleep(0.2)
+    elif not win32gui.IsWindowVisible(target_main_hwnd):
+        win32gui.ShowWindow(target_main_hwnd, win32con.SW_SHOW)
+        time.sleep(0.1)
 
 target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
 current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
@@ -1414,12 +1528,19 @@ time.sleep(0.05)
 # 分步移动到终点
 steps = 10
 step_delay = duration / steps
+mid = steps // 2
 
 for i in range(1, steps + 1):
     progress = i / steps
     cx = int(sx + (ex - sx) * progress)
     cy = int(sy + (ey - sy) * progress)
     win32api.SetCursorPos((cx, cy))
+    # 跨窗口拖拽：在 midpoint 激活目标窗口，使其浮到源窗口之上
+    if target_main_hwnd and i == mid:
+        target_tid2 = ctypes.windll.user32.GetWindowThreadProcessId(target_main_hwnd, None)
+        ctypes.windll.user32.AttachThreadInput(current_tid, target_tid2, True)
+        win32gui.SetForegroundWindow(target_main_hwnd)
+        time.sleep(0.15)
     time.sleep(step_delay)
 
 # 释放左键
@@ -1738,7 +1859,11 @@ time.sleep(0.05)
         Note:
             打包环境(frozen)使用嵌入的 Python 解释器创建子进程。
             开发环境使用 sys.executable。
+
+            非阻塞模式下返回 True 仅表示"消息已投递"，不代表目标窗口已完成操作。
+            _last_error 捕获的是子进程自身的启动/执行错误，不是目标窗口的响应。
         """
+        self._last_error = None
         is_frozen = getattr(sys, 'frozen', False)
 
         if is_frozen:
@@ -1754,18 +1879,20 @@ time.sleep(0.05)
             if non_blocking or semi_blocking:
                 proc = subprocess.Popen(
                     [python_exe, '-c', code],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                     creationflags=subprocess.CREATE_NO_WINDOW,
                     env=env
                 )
                 if semi_blocking:
                     time.sleep(0.2)
                     if proc.poll() is not None:
+                        self._last_error = (proc.stderr.read() or b"").decode("utf-8", errors="replace").strip()
                         return False
                 else:
                     time.sleep(0.01)
                     if proc.poll() is not None:
+                        self._last_error = (proc.stderr.read() or b"").decode("utf-8", errors="replace").strip()
                         return False
                 return True
             else:
@@ -1775,8 +1902,11 @@ time.sleep(0.05)
                     creationflags=subprocess.CREATE_NO_WINDOW,
                     env=env
                 )
+                if result.returncode != 0:
+                    self._last_error = result.stderr.strip() if result.stderr else None
                 return result.returncode == 0
-        except Exception:
+        except Exception as e:
+            self._last_error = str(e)
             return False
 
     def _client_to_screen(self, hwnd: int, x: int, y: int) -> Tuple[int, int]:

@@ -56,7 +56,7 @@ async def input_text(request: InputTextRequest, req: Request = None, authorizati
             request.window_id, request.x, request.y, request.main_window_id
         )
         if not coords:
-            return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
+            return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle. The window may have been closed or minimized. Refer to skill.md for troubleshooting.")
         physical_x, physical_y, virtual_x, virtual_y = coords
 
     # 执行输入
@@ -88,7 +88,7 @@ async def input_text(request: InputTextRequest, req: Request = None, authorizati
     )
 
     if inject_result.success:
-        return OperationResponse(success=True, message="Command sent, verify with screenshot")
+        return OperationResponse(success=True, message="Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning.")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -112,7 +112,7 @@ async def press_key(request: PressKeyRequest, req: Request = None, authorization
             request.window_id, request.x, request.y, request.main_window_id
         )
         if not coords:
-            return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle")
+            return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle. The window may have been closed or minimized. Refer to skill.md for troubleshooting.")
         physical_x, physical_y, virtual_x, virtual_y = coords
 
     # 执行按键
@@ -149,6 +149,6 @@ async def press_key(request: PressKeyRequest, req: Request = None, authorization
     )
 
     if inject_result.success:
-        return OperationResponse(success=True, message="Command sent, verify with screenshot")
+        return OperationResponse(success=True, message="Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning.")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)

@@ -12,6 +12,8 @@ from app.utils.image import (
     base64_to_image,
     save_image,
     generate_screenshot_filename,
+    generate_scroll_screenshot_filename,
+    generate_crop_zoom_filename,
     generate_data_dir
 )
 
@@ -72,12 +74,12 @@ class TestImageProcessing:
         """测试生成截图文件名"""
         filename = generate_screenshot_filename()
 
-        # 格式检查: screenshot-hhmmss-rand4.png
-        assert filename.startswith("screenshot-")
+        # 格式检查: screenshot_hhmmss_rand4.png
+        assert filename.startswith("screenshot_")
         assert filename.endswith(".png")
 
         # 提取时间部分
-        parts = filename.replace("screenshot-", "").replace(".png", "").split("-")
+        parts = filename.replace("screenshot_", "").replace(".png", "").split("_")
         assert len(parts) == 2
         assert len(parts[0]) == 6  # hhmmss
         assert len(parts[1]) == 4  # rand4
@@ -115,3 +117,27 @@ class TestImageProcessing:
         # 验证保存的图片是RGB模式
         loaded = Image.open(filepath)
         assert loaded.mode == "RGB"
+
+    def test_generate_scroll_screenshot_filename(self):
+        """测试生成滚动截图文件名"""
+        filename = generate_scroll_screenshot_filename()
+
+        assert filename.startswith("scroll_screenshot_")
+        assert filename.endswith(".png")
+
+        parts = filename.replace("scroll_screenshot_", "").replace(".png", "").split("_")
+        assert len(parts) == 2
+        assert len(parts[0]) == 6
+        assert len(parts[1]) == 4
+
+    def test_generate_crop_zoom_filename(self):
+        """测试生成裁剪放大文件名"""
+        filename = generate_crop_zoom_filename()
+
+        assert filename.startswith("crop_zoom_")
+        assert filename.endswith(".png")
+
+        parts = filename.replace("crop_zoom_", "").replace(".png", "").split("_")
+        assert len(parts) == 2
+        assert len(parts[0]) == 6
+        assert len(parts[1]) == 4

@@ -40,6 +40,7 @@ export function useLogs() {
       'screenshot': '截图',
       'click': '点击',
       'swipe': '滑动',
+      'drag': '拖拽',
       'right_click': '右键点击',
       'input_text': '输入文本',
       'press_key': '按键',
@@ -51,6 +52,7 @@ export function useLogs() {
       'get_window_list': '获取窗口列表',
       'batch': '批量操作',
       'scroll_screenshot': '滚动长截图',
+      'crop_zoom_screenshot': '裁剪放大',
       'delegated_enter': '进入托管',
       'delegated_exit': '退出托管',
       'delegated_status': '查询托管状态'
@@ -59,6 +61,7 @@ export function useLogs() {
       'screenshot': 'Screenshot',
       'click': 'Click',
       'swipe': 'Swipe',
+      'drag': 'Drag',
       'right_click': 'Right Click',
       'input_text': 'Input Text',
       'press_key': 'Press Key',
@@ -70,6 +73,7 @@ export function useLogs() {
       'get_window_list': 'Get Window List',
       'batch': 'Batch',
       'scroll_screenshot': 'Scroll Screenshot',
+      'crop_zoom_screenshot': 'Crop Zoom',
       'delegated_enter': 'Enter Delegated',
       'delegated_exit': 'Exit Delegated',
       'delegated_status': 'Query Delegated Status'

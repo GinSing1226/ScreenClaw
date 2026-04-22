@@ -61,7 +61,8 @@ async def take_screenshot(
                 "main_window_id": request.main_window_id,
                 "coordinate_type": request.coordinate_type,
                 "grid": request.grid.model_dump() if request.grid else None,
-                "coordinate": request.coordinate.model_dump() if request.coordinate else None
+                "coordinate": request.coordinate.model_dump() if request.coordinate else None,
+                "marker": [m.model_dump() for m in request.marker] if request.marker else None
             },
             result={"success": False, "message": "Window not found"},
             client_ip=client_ip
@@ -81,7 +82,8 @@ async def take_screenshot(
                 "main_window_id": request.main_window_id,
                 "coordinate_type": request.coordinate_type,
                 "grid": request.grid.model_dump() if request.grid else None,
-                "coordinate": request.coordinate.model_dump() if request.coordinate else None
+                "coordinate": request.coordinate.model_dump() if request.coordinate else None,
+                "marker": [m.model_dump() for m in request.marker] if request.marker else None
             },
             result={"success": False, "message": "Process is blocked"},
             client_ip=client_ip
@@ -135,7 +137,8 @@ async def take_screenshot(
                 "main_window_id": request.main_window_id,
                 "coordinate_type": request.coordinate_type,
                 "grid": request.grid.model_dump() if request.grid else None,
-                "coordinate": request.coordinate.model_dump() if request.coordinate else None
+                "coordinate": request.coordinate.model_dump() if request.coordinate else None,
+                "marker": [m.model_dump() for m in request.marker] if request.marker else None
             },
             result={"success": False, "message": result.error},
             client_ip=client_ip
@@ -149,7 +152,8 @@ async def take_screenshot(
         config = config_service.get()
 
         # 使用请求参数或默认值
-        grid_density = request.grid.density if request.grid else config.screenshot.default_grid_density
+        grid_density_x = request.grid.density_x if request.grid else config.screenshot.default_grid_density
+        grid_density_y = request.grid.density_y if request.grid else config.screenshot.default_grid_density
         grid_opacity = request.grid.opacity if request.grid else config.screenshot.default_grid_opacity
         grid_color = request.grid.color if request.grid else config.screenshot.default_grid_color
 
@@ -168,7 +172,8 @@ async def take_screenshot(
         print(f"[Screenshot] number_density={number_density}, number_decimal={number_decimal}, color_mode={color_mode}")
 
         renderer = GridRenderer(
-            density=grid_density,
+            density_x=grid_density_x,
+            density_y=grid_density_y,
             grid_opacity=grid_opacity,
             grid_color=grid_color,
             number_density=number_density,
@@ -179,6 +184,20 @@ async def take_screenshot(
             color_mode=color_mode
         )
         image = renderer.draw_grid(image)
+
+        # 绘制标记（在网格绘制之后，压缩之前）
+        if request.marker:
+            for m in request.marker:
+                image = renderer.draw_marker(
+                    image,
+                    x=m.x,
+                    y=m.y,
+                    ring_radius=m.ring_radius,
+                    ring_line_width=m.ring_line_width,
+                    ring_color=m.ring_color,
+                    dot_radius=m.dot_radius,
+                    dot_color=m.dot_color
+                )
 
     # 压缩图片
     config = config_service.get()
@@ -212,7 +231,8 @@ async def take_screenshot(
             "main_window_id": request.main_window_id,
             "coordinate_type": request.coordinate_type,
             "grid": request.grid.model_dump() if request.grid else None,
-            "coordinate": request.coordinate.model_dump() if request.coordinate else None
+            "coordinate": request.coordinate.model_dump() if request.coordinate else None,
+            "marker": [m.model_dump() for m in request.marker] if request.marker else None
         },
         result={"success": True, "image_path": image_path},
         duration_ms=duration_ms,
@@ -228,8 +248,14 @@ async def take_screenshot(
         # 远程：只返回base64
         screenshot_data = ScreenshotData(image_base64=image_base64)
 
+    # 成功消息
+    if request.marker:
+        success_message = "Screenshot successful. Marker indicates the position of your input coordinates on the image. If result is unsatisfactory, refer to skill.md for parameter tuning."
+    else:
+        success_message = "Screenshot successful. If result is unsatisfactory, refer to skill.md for parameter tuning."
+
     return ScreenshotResponse(
         success=True,
-        message="Screenshot successful",
+        message=success_message,
         data=screenshot_data
     )

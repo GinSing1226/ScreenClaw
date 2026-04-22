@@ -13,19 +13,20 @@
 #     main_window_id - 主窗口ID（必需，从get_window_list获取）
 #
 # 滚动参数（可选）：
-#     max_scrolls=<值>       - 最大滚动次数，默认5
-#     scroll_percent=<值>    - 初始滚动幅度(0.1-0.95)，默认0.85
-#     scroll_wait=<值>       - 滚动等待时间(秒)，默认1.0
+#     max_scrolls=<值>       - 最大滚动次数（不指定则使用服务端配置）
+#     scroll_percent=<值>    - 初始滚动幅度(0.1-0.95)（不指定则使用服务端配置）
+#     scroll_wait=<值>       - 滚动等待时间(秒)（不指定则使用服务端配置）
 #     x=<值>                 - 滚动位置横坐标(0-100)，默认50（中心）
 #     y=<值>                 - 滚动位置纵坐标(0-100)，默认50（中心）
 #
 # 高级参数（可选）：
-#     max_adjust_retries=<值> - 自适应最大调整次数，默认4
-#     target_overlap_min=<值> - 目标重叠下限(0.10-0.50)，默认0.35
-#     target_overlap_max=<值> - 目标重叠上限(0.20-0.60)，默认0.45
-#     stop_threshold=<值>     - 停止阈值(0.0-0.01)，默认0.0001
+#     max_adjust_retries=<值> - 自适应最大调整次数（不指定则使用服务端配置）
+#     target_overlap_min=<值> - 目标重叠下限(0.10-0.50)（不指定则使用服务端配置）
+#     target_overlap_max=<值> - 目标重叠上限(0.20-0.60)（不指定则使用服务端配置）
+#     stop_threshold=<值>     - 停止阈值(1~0.0001，即100%~0.01%)（不指定则使用服务端配置）
 #
 # 说明：
+#     - 未指定的参数将使用服务端 config.json 中的默认值
 #     - 本功能内部硬编码使用 hijack 模式
 #     - 本功能不支持网格坐标绘制
 #     - 远程场景的截图保存目录规则：{ai_app_type}__{session_id}__{yyyy-MM-dd}/
@@ -136,17 +137,17 @@ if [ $# -lt 6 ]; then
     echo "  bash scroll_screenshot_cli.sh http://192.168.10.190:12261 TOKEN123 1380176 my-session claude_code 1380176 max_scrolls=10 scroll_percent=0.9"
     echo ""
     echo "滚动参数（可选）："
-    echo "  max_scrolls=<值>       - 最大滚动次数（不指定则使用配置文件默认值）"
-    echo "  scroll_percent=<值>    - 初始滚动幅度(0.1-0.95)（不指定则使用配置文件默认值）"
-    echo "  scroll_wait=<值>       - 滚动等待时间(秒)（不指定则使用配置文件默认值）"
+    echo "  max_scrolls=<值>       - 最大滚动次数（不指定则使用服务端配置）"
+    echo "  scroll_percent=<值>    - 初始滚动幅度(0.1-0.95)（不指定则使用服务端配置）"
+    echo "  scroll_wait=<值>       - 滚动等待时间(秒)（不指定则使用服务端配置）"
     echo "  x=<值>                 - 滚动位置横坐标(0-100)，默认50（中心）"
     echo "  y=<值>                 - 滚动位置纵坐标(0-100)，默认50（中心）"
     echo ""
     echo "高级参数（可选）："
-    echo "  max_adjust_retries=<值> - 自适应最大调整次数（不指定则使用配置文件默认值）"
-    echo "  target_overlap_min=<值> - 目标重叠下限(0.10-0.50)（不指定则使用配置文件默认值）"
-    echo "  target_overlap_max=<值> - 目标重叠上限(0.20-0.60)（不指定则使用配置文件默认值）"
-    echo "  stop_threshold=<值>     - 停止阈值(0.0-0.01)（不指定则使用配置文件默认值）"
+    echo "  max_adjust_retries=<值> - 自适应最大调整次数（不指定则使用服务端配置）"
+    echo "  target_overlap_min=<值> - 目标重叠下限(0.10-0.50)（不指定则使用服务端配置）"
+    echo "  target_overlap_max=<值> - 目标重叠上限(0.20-0.60)（不指定则使用服务端配置）"
+    echo "  stop_threshold=<值>     - 停止阈值(1~0.0001，即100%~0.01%)（不指定则使用服务端配置）"
     exit 1
 fi
 
@@ -282,7 +283,7 @@ trap "rm -f $tmp_json" EXIT
 http_code=$(curl -s -w "%{http_code}" -o "$tmp_json" \
     -H "Authorization: Bearer $token" \
     -H "Content-Type: application/json" \
-    -d "$JSON" \
+    -d "$json_body" \
     "$scroll_screenshot_url")
 
 if [ "$http_code" != "200" ]; then

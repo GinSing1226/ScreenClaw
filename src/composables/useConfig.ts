@@ -23,6 +23,12 @@ export interface AppConfig {
     default_number_opacity: number
     image_quality: number
     max_image_width: number
+    default_marker_ring_radius: number
+    default_marker_ring_line_width: number
+    default_marker_ring_color: string
+    default_marker_dot_radius: number
+    default_marker_dot_color: string
+    default_crop_zoom_scale: number
   }
   input: {
     newline_mapping: Record<string, string>
@@ -68,6 +74,14 @@ export interface SettingsForm {
   numberOpacity: number
   imageQuality: number
   maxImageWidth: number
+  // 坐标标记点
+  markerRingRadius: number
+  markerRingLineWidth: number
+  markerRingColor: string
+  markerDotRadius: number
+  markerDotColor: string
+  // 裁剪放大
+  cropZoomScale: number
   blockedProcesses: string
   autoConfirmProcesses: string
   language: string
@@ -100,6 +114,14 @@ const settingsForm = ref<SettingsForm>({
   numberOpacity: 100,
   imageQuality: 85,
   maxImageWidth: 1920,
+  // 坐标标记点
+  markerRingRadius: 12,
+  markerRingLineWidth: 2,
+  markerRingColor: '#FF0000',
+  markerDotRadius: 3,
+  markerDotColor: '#FF0000',
+  // 裁剪放大
+  cropZoomScale: 2.0,
   blockedProcesses: '',
   autoConfirmProcesses: '',
   language: 'zh_CN',
@@ -139,6 +161,14 @@ export function useConfig() {
         numberOpacity: result.screenshot?.default_number_opacity ?? 100,
         imageQuality: result.screenshot?.image_quality ?? 85,
         maxImageWidth: result.screenshot?.max_image_width ?? 1920,
+        // 坐标标记点
+        markerRingRadius: result.screenshot?.default_marker_ring_radius ?? 12,
+        markerRingLineWidth: result.screenshot?.default_marker_ring_line_width ?? 2,
+        markerRingColor: result.screenshot?.default_marker_ring_color ?? '#FF0000',
+        markerDotRadius: result.screenshot?.default_marker_dot_radius ?? 3,
+        markerDotColor: result.screenshot?.default_marker_dot_color ?? '#FF0000',
+        // 裁剪放大
+        cropZoomScale: result.screenshot?.default_crop_zoom_scale ?? 2.0,
         blockedProcesses: (result.security?.blocked_processes || []).join('\n'),
         autoConfirmProcesses: (result.security?.auto_confirm_processes || []).join('\n'),
         language: result.ui?.language ?? 'zh_CN',
@@ -186,7 +216,13 @@ export function useConfig() {
           default_number_color: settingsForm.value.numberColor,
           default_number_opacity: settingsForm.value.numberOpacity,
           image_quality: settingsForm.value.imageQuality,
-          max_image_width: settingsForm.value.maxImageWidth
+          max_image_width: settingsForm.value.maxImageWidth,
+          default_marker_ring_radius: settingsForm.value.markerRingRadius,
+          default_marker_ring_line_width: settingsForm.value.markerRingLineWidth,
+          default_marker_ring_color: settingsForm.value.markerRingColor,
+          default_marker_dot_radius: settingsForm.value.markerDotRadius,
+          default_marker_dot_color: settingsForm.value.markerDotColor,
+          default_crop_zoom_scale: settingsForm.value.cropZoomScale
         },
         input: {
           newline_mapping: {}
@@ -249,6 +285,14 @@ export function useConfig() {
         numberOpacity: 100,
         imageQuality: 85,
         maxImageWidth: 1920,
+        // 坐标标记点
+        markerRingRadius: 12,
+        markerRingLineWidth: 2,
+        markerRingColor: '#FF0000',
+        markerDotRadius: 3,
+        markerDotColor: '#FF0000',
+        // 裁剪放大
+        cropZoomScale: 2.0,
         blockedProcesses: config.value.security.blocked_processes.join('\n'),
         autoConfirmProcesses: config.value.security.auto_confirm_processes.join('\n'),
         language: config.value.ui.language,

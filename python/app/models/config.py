@@ -30,6 +30,12 @@ class ScreenshotConfig(BaseModel):
     default_number_opacity: int = 100
     image_quality: int = 85
     max_image_width: int = 1920
+    default_marker_ring_radius: int = 12
+    default_marker_ring_line_width: int = 2
+    default_marker_ring_color: str = "#FF0000"
+    default_marker_dot_radius: int = 3
+    default_marker_dot_color: str = "#FF0000"
+    default_crop_zoom_scale: float = 2.0
 
 
 class InputConfig(BaseModel):

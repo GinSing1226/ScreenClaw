@@ -205,7 +205,7 @@ if ($MyInvocation.InvocationName -ne '.') {
             }
         }
         if ($hasScreenshots) {
-            Write-Output "Next: Update todo status; Adjust grid params if coordinates are hard to read; Follow 3-role workflow; Check docs for other issues"
+            Write-Output "Screenshot successful. If result is unsatisfactory, refer to skill.md for parameter tuning."
         }
     }
     else {

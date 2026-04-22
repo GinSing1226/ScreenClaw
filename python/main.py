@@ -16,6 +16,7 @@ if sys.stdout is None:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -65,7 +66,7 @@ async def verify_token(request: Request, call_next):
             status_code=401,
             content=BaseResponse(
                 success=False,
-                message="缺少认证令牌",
+                message="Authentication required",
                 error_code="AUTH_FAILED"
             ).model_dump()
         )
@@ -75,7 +76,7 @@ async def verify_token(request: Request, call_next):
             status_code=401,
             content=BaseResponse(
                 success=False,
-                message="认证失败",
+                message="Authentication failed",
                 error_code="AUTH_FAILED"
             ).model_dump()
         )
@@ -95,8 +96,50 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content=BaseResponse(
             success=False,
-            message="内部服务器错误，请稍后重试",
+            message="Internal server error. Refer to skill.md for troubleshooting.",
             error_code="INTERNAL_ERROR"
+        ).model_dump()
+    )
+
+
+# 422 校验错误字段描述映射
+FIELD_DESCRIPTIONS = {
+    # 百分比坐标（0-100）
+    "x": "x (percentage 0-100)",
+    "y": "y (percentage 0-100)",
+    "start_x": "start_x (percentage 0-100)",
+    "start_y": "start_y (percentage 0-100)",
+    "end_x": "end_x (percentage 0-100)",
+    "end_y": "end_y (percentage 0-100)",
+    "center_x": "center_x (percentage 0-100)",
+    "center_y": "center_y (percentage 0-100)",
+    # 裁剪区域（百分比）
+    "crop_width": "crop_width (percentage 0-100)",
+    "crop_height": "crop_height (percentage 0-100)",
+    # 网格密度
+    "density_x": "density_x (0.1-100)",
+    "density_y": "density_y (0.1-100)",
+    # 放大倍数
+    "zoom_scale": "zoom_scale (1.0-10.0)",
+}
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """422 参数校验错误处理"""
+    errors = exc.errors()
+    parts = []
+    for e in errors:
+        field = e["loc"][-1] if e.get("loc") else "unknown"
+        desc = FIELD_DESCRIPTIONS.get(field, field)
+        parts.append(f"{desc}: {e['msg']}")
+    details = "; ".join(parts)
+    return JSONResponse(
+        status_code=422,
+        content=BaseResponse(
+            success=False,
+            message=f"Invalid request parameters: {details}. Refer to skill.md for parameter details.",
+            error_code="INVALID_PARAMS"
         ).model_dump()
     )
 

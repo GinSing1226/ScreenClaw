@@ -13,7 +13,8 @@
 #     main_window_id - 主窗口ID（必需，从get_window_list获取）
 #
 # 网格参数（可选）：
-#     grid_density=<值>      - 每格宽度（像素），值越小网格越密，默认5.0
+#     grid_density_x=<值>     - 水平网格密度百分比，值越小网格越密，默认5.0，支持小数
+#     grid_density_y=<值>     - 垂直网格密度百分比，值越小网格越密，默认5.0，支持小数
 #     grid_opacity=<值>       - 网格透明度(0-100)，默认50
 #     grid_color=<值>         - 网格颜色，默认#ff0000
 #
@@ -27,11 +28,21 @@
 #     number_color=<值>        - 数字颜色，默认#ff0000
 #     number_opacity=<值>      - 数字透明度(0-100)，默认100
 #
+# 标记点参数（可选）：
+#     marker_x=<值>           - 标记点横坐标(0-100)，与marker_y同时传才生效
+#     marker_y=<值>           - 标记点纵坐标(0-100)，与marker_x同时传才生效
+#     marker_ring_radius=<值> - 外圈半径(像素)，默认12
+#     marker_ring_line_width=<值> - 外圈线宽(像素)，默认2
+#     marker_ring_color=<值>  - 外圈颜色，默认#FF0000
+#     marker_dot_radius=<值>  - 中心圆半径(像素)，默认3
+#     marker_dot_color=<值>   - 中心圆颜色，默认#FF0000
+#
 # 降级路径：本脚本 → fetch_screenshot_cli.py → fetch_screenshot_cli.ps1
 #
 # 用法一（推荐）：直接调用API
 #   bash fetch_screenshot_cli.sh "http://192.168.10.190:12261" "TOKEN123" 1380176 "my-session" "claude_code" 1380176
-#   bash fetch_screenshot_cli.sh "http://192.168.10.190:12261" "TOKEN123" 1380176 "my-session" "claude_code" 1380176 "grid_density=8" "number_size=14"
+#   bash fetch_screenshot_cli.sh "http://192.168.10.190:12261" "TOKEN123" 1380176 "my-session" "claude_code" 1380176 "grid_density_x=8" "number_size=14"
+#   bash fetch_screenshot_cli.sh "http://192.168.10.190:12261" "TOKEN123" 1380176 "my-session" "claude_code" 1380176 "marker_x=55" "marker_y=65"
 #
 # 用法二（备用）：处理已保存的JSON响应（会自动删除该JSON文件）
 #   bash fetch_screenshot_cli.sh "/tmp/screenshot_response.json" "http://192.168.10.190:12261"
@@ -70,10 +81,12 @@ get_data_dir() {
     esac
 }
 
-# 构建网格和数字参数
+# 构建网格、数字和标记点参数
 build_grid_params() {
     local grid_parts=""
     local coord_parts=""
+    # 多标记点：按索引收集，marker_1_x, marker_2_x 等
+    declare -A marker_data
 
     for arg in "$@"; do
         if [[ "$arg" =~ ^(.+?)=(.+)$ ]]; then
@@ -81,8 +94,11 @@ build_grid_params() {
             value="${BASH_REMATCH[2]}"
 
             case "$key" in
-                grid_density)
-                    grid_parts="$grid_parts,\"density\":$value"
+                grid_density_x)
+                    grid_parts="$grid_parts,\"density_x\":$value"
+                    ;;
+                grid_density_y)
+                    grid_parts="$grid_parts,\"density_y\":$value"
                     ;;
                 grid_opacity)
                     grid_parts="$grid_parts,\"opacity\":$value"
@@ -105,18 +121,81 @@ build_grid_params() {
                 number_opacity)
                     coord_parts="$coord_parts,\"number_opacity\":$value"
                     ;;
+                marker_*_x|marker_*_y|marker_*_ring_radius|marker_*_ring_line_width|marker_*_ring_color|marker_*_dot_radius|marker_*_dot_color)
+                    # marker_N_field 格式
+                    marker_data["$key"]="$value"
+                    ;;
+                marker_x)
+                    # 向后兼容：marker_x → marker_1_x
+                    marker_data["marker_1_x"]="$value"
+                    ;;
+                marker_y)
+                    marker_data["marker_1_y"]="$value"
+                    ;;
+                marker_ring_radius)
+                    marker_data["marker_1_ring_radius"]="$value"
+                    ;;
+                marker_ring_line_width)
+                    marker_data["marker_1_ring_line_width"]="$value"
+                    ;;
+                marker_ring_color)
+                    marker_data["marker_1_ring_color"]="$value"
+                    ;;
+                marker_dot_radius)
+                    marker_data["marker_1_dot_radius"]="$value"
+                    ;;
+                marker_dot_color)
+                    marker_data["marker_1_dot_color"]="$value"
+                    ;;
             esac
         fi
     done
 
     local result=""
     if [ -n "$grid_parts" ]; then
-        grid_parts="${grid_parts:1}"  # 移除开头的逗号
+        grid_parts="${grid_parts:1}"
         result="$result,\"grid\":{$grid_parts}"
     fi
     if [ -n "$coord_parts" ]; then
-        coord_parts="${coord_parts:1}"  # 移除开头的逗号
+        coord_parts="${coord_parts:1}"
         result="$result,\"coordinate\":{$coord_parts}"
+    fi
+
+    # 构建多标记点数组
+    if [ ${#marker_data[@]} -gt 0 ]; then
+        local marker_indices=()
+        for key in "${!marker_data[@]}"; do
+            if [[ "$key" =~ ^marker_([0-9]+)_x$ ]]; then
+                marker_indices+=("${BASH_REMATCH[1]}")
+            fi
+        done
+        # 去重排序
+        local sorted_indices=($(printf '%s\n' "${marker_indices[@]}" | sort -n | uniq))
+        if [ ${#sorted_indices[@]} -gt 0 ]; then
+            local marker_array_items=""
+            for idx in "${sorted_indices[@]}"; do
+                local item=""
+                for field in x y ring_radius ring_line_width ring_color dot_radius dot_color; do
+                    local mk="marker_${idx}_${field}"
+                    if [ -n "${marker_data[$mk]+x}" ]; then
+                        local mv="${marker_data[$mk]}"
+                        if [[ "$field" == ring_color || "$field" == dot_color ]]; then
+                            item="$item,\"${field}\":\"${mv}\""
+                        else
+                            item="$item,\"${field}\":${mv}"
+                        fi
+                    fi
+                done
+                if [ -n "$item" ]; then
+                    item="${item:1}"
+                    marker_array_items="$marker_array_items,{$item}"
+                fi
+            done
+            if [ -n "$marker_array_items" ]; then
+                marker_array_items="${marker_array_items:1}"
+                result="$result,\"marker\":[$marker_array_items]"
+            fi
+        fi
     fi
 
     echo "$result"
@@ -202,10 +281,12 @@ if [ $# -lt 6 ]; then
     echo ""
     echo "示例："
     echo "  bash fetch_screenshot_cli.sh http://192.168.10.190:12261 TOKEN123 1380176 my-session claude_code 1380176"
-    echo "  bash fetch_screenshot_cli.sh http://192.168.10.190:12261 TOKEN123 1380176 my-session claude_code 1380176 grid_density=8 number_size=14"
+    echo "  bash fetch_screenshot_cli.sh http://192.168.10.190:12261 TOKEN123 1380176 my-session claude_code 1380176 grid_density_x=8 number_size=14"
+    echo "  bash fetch_screenshot_cli.sh http://192.168.10.190:12261 TOKEN123 1380176 my-session claude_code 1380176 marker_x=55 marker_y=65"
     echo ""
     echo "网格参数（可选）："
-    echo "  grid_density=<值>      - 每格宽度（像素），值越小网格越密，默认5.0"
+    echo "  grid_density_x=<值>     - 水平网格密度百分比，值越小网格越密，默认5.0"
+    echo "  grid_density_y=<值>     - 垂直网格密度百分比，值越小网格越密，默认5.0"
     echo "  grid_opacity=<值>       - 网格透明度(0-100)，默认50"
     echo "  grid_color=<值>         - 网格颜色，默认#ff0000"
     echo ""
@@ -218,6 +299,10 @@ if [ $# -lt 6 ]; then
     echo "  number_size=<值>         - 字体大小(4-32)，默认12"
     echo "  number_color=<值>        - 数字颜色，默认#ff0000"
     echo "  number_opacity=<值>      - 数字透明度(0-100)，默认100"
+    echo ""
+    echo "标记点参数（可选）："
+    echo "  marker_x=<值>           - 标记点横坐标百分比(0-100)，与marker_y同时传才生效"
+    echo "  marker_y=<值>           - 标记点纵坐标百分比(0-100)，与marker_x同时传才生效"
     echo ""
     echo "用法二（备用）：处理已保存的JSON响应"
     echo "  bash fetch_screenshot_cli.sh <json_file_path> <api_url>"
@@ -281,3 +366,8 @@ fi
 # 处理结果
 output_path=$(process_result "$tmp_json" "$api_url")
 echo "$output_path"
+if [[ "$grid_params" == *"\"marker\":"* ]]; then
+    echo "Screenshot successful. Marker indicates the position of your input coordinates on the image. If result is unsatisfactory, refer to skill.md for parameter tuning."
+else
+    echo "Screenshot successful. If result is unsatisfactory, refer to skill.md for parameter tuning."
+fi
