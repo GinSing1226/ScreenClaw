@@ -40,6 +40,7 @@ AI 应用通过 HTTP API 可以：
 - 让任何多模态大模型有了精确定位能力，且识别速度更快
 - 基于百分比（0-100）的坐标系统，只要窗口比例不变，适用于任何大小的窗口
 - 不同分辨率、不同窗口尺寸都能复用相同的坐标
+- 自适应网格密度和数字大小：基于压缩后的图片尺寸，自动生成最合适的密度和数字大小，避免 AI 乱传参数影响读坐标
 
 ### 💻 操作电脑软件
 支持自动化操作大部分电脑软件，特别是不提供 API、CLI 等自动化工具的传统桌面软件。
@@ -63,6 +64,15 @@ AI 应用通过 HTTP API 可以：
 
 ### 🎮 托管模式
 用户主动要求时进入，AI 完全控制电脑，物理输入，无需逐次确认。适合需要持续操作的场景（如中文输入）。通过快捷键 `Ctrl+Alt+Z` 可随时退出。
+
+### 🔍 辅助读坐标
+- 坐标网格支持展示标记点（marker），方便 AI 预览坐标是否正确后再执行操作
+- 裁剪放大接口，对已有截图局部放大，更容易读准坐标
+
+### 🎛️ 控制工程（Harness Engineering）
+- **轮数自检**：每隔若干轮截图操作，通过 API 报错强制 AI 停下来阅读自检文档，重新装载关键上下文，防止长会话中指令遗忘
+- **自检入参校验**：AI 需要输入满足最低字符数、包含用户配置关键词的内容才能通过自检，服务端对自检内容做重复校验，防止 AI 偷懒跳过
+- **自定义自检文档**：自检文档内容可自定义，不局限于 ScreenClaw，可用于强制 AI 重载任何关键信息
 
 ---
 
@@ -132,6 +142,7 @@ npx skills add GinSing1226/ScreenClaw
 | `drag` | 拖拽操作 | 文件拖放、元素拖动，支持速度控制 |
 | `mouse_move` | 鼠标相对移动 | 游戏视角控制，仅 hijack/delegated |
 | `scroll_screenshot` | 滚动长截图 | 自动滚动拼接，生成长图 |
+| `crop_zoom_screenshot` | 裁剪放大 | 对已有截图局部放大，看清细节 |
 | `delegated` | 进入/退出托管模式 | 用户主动要求完全控制时 |
 
 ---
@@ -181,14 +192,19 @@ curl -X POST http://127.0.0.1:12261/api/screenshot \
     "main_window_id": 1001,
     "coordinate_type": "grid",
     "color_mode": "grayscale",
-    "density": 5.0,
-    "opacity": 50,
-    "color": "#ff0000",
-    "number_density": 2,
-    "number_decimal": 0,
-    "number_size": 12,
-    "number_color": "#ff0000",
-    "number_opacity": 100
+    "grid": {
+      "density_x": 5.0,
+      "density_y": 5.0,
+      "opacity": 50,
+      "color": "#ff0000"
+    },
+    "coordinate": {
+      "number_density": 2,
+      "number_decimal": 1,
+      "number_size": 14,
+      "number_color": "#ff0000",
+      "number_opacity": 100
+    }
   }'
 ```
 
@@ -343,7 +359,8 @@ curl -X POST http://127.0.0.1:12261/api/wait \
     "ai_app_type": "claude_code",
     "session_id": "session-123",
     "window_id": 1001,
-    "duration_ms": 1000
+    "duration_ms": 1000,
+    "random_range": 300
   }'
 ```
 
@@ -403,6 +420,8 @@ curl -X POST http://127.0.0.1:12261/api/drag \
   }'
 ```
 
+跨窗口拖拽（可选 `target_window_id`、`target_main_window_id`，`end_x`/`end_y` 相对于目标窗口）。
+
 ### 16. 鼠标移动
 
 ```bash
@@ -421,7 +440,25 @@ curl -X POST http://127.0.0.1:12261/api/mouse_move \
   }'
 ```
 
-### 17. 滚动长截图
+### 17. 裁剪放大
+
+```bash
+curl -X POST http://127.0.0.1:12261/api/crop_zoom_screenshot \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ai_app_type": "claude_code",
+    "session_id": "session-123",
+    "source_image_path": "D:/screenClaw/data/claude_code__session-123/screenshot_143215.png",
+    "center_x": 55.0,
+    "center_y": 65.0,
+    "crop_width": 20,
+    "crop_height": 20,
+    "zoom_scale": 2.0
+  }'
+```
+
+### 18. 滚动长截图
 
 ```bash
 curl -X POST http://127.0.0.1:12261/api/scroll_screenshot \
@@ -616,6 +653,7 @@ screenClaw/
 - 🎯 **提高识别率** — 通过技能优化和场景模板沉淀，提升多模态大模型的初次识别准确率
 - 🔄 **更多 RPA 动作** — 扩展支持的自动化操作类型，覆盖更多使用场景
 - 🖥️ **桌面级操作** — 直接对桌面截图和操作，不绑定进程，可操作任何可见内容（会抢夺用户鼠标和键盘）
+- 🧠 **坐标准确性提升** — 利用轻度 OCR 或无障碍树技术，进一步提高坐标准确性
 - 📦 **场景模板库** — 封装更多常用软件的场景模板，开箱即用
 
 ---

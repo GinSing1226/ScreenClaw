@@ -16,31 +16,31 @@ const emit = defineEmits<{
 /**
  * 格式化日志显示，过滤掉 base64 数据
  */
+const sanitizeForDisplay = (value: any): any => {
+  if (Array.isArray(value)) {
+    return value.map(item => sanitizeForDisplay(item))
+  }
+  if (!value || typeof value !== 'object') {
+    return value
+  }
+
+  const sanitized: Record<string, any> = {}
+  for (const [key, item] of Object.entries(value)) {
+    if (key === 'image_base64' || key === 'source_image_base64') {
+      sanitized[key] = '<base64 data omitted>'
+    } else {
+      sanitized[key] = sanitizeForDisplay(item)
+    }
+  }
+  return sanitized
+}
+
 const formatLogDisplay = (log: LogItem | null): Record<string, any> | null => {
   if (!log) return null
 
   const displayLog = { ...log }
-
-  // 过滤 result 中的 base64 数据
-  if (displayLog.result) {
-    const result = { ...displayLog.result }
-
-    // 过滤 data 字段中的 image_base64
-    if (result.data && typeof result.data === 'object') {
-      const data = { ...result.data }
-      // 移除 image_base64 字段
-      if ('image_base64' in data) {
-        delete (data as any).image_base64
-        // 如果 image_path 存在，保留说明
-        if (data.image_path) {
-          ;(data as any).image_base64 = `<base64 data omitted, path: ${data.image_path}>`
-        }
-      }
-      result.data = data
-    }
-
-    displayLog.result = result
-  }
+  displayLog.params = sanitizeForDisplay(displayLog.params)
+  displayLog.result = sanitizeForDisplay(displayLog.result)
 
   return displayLog
 }

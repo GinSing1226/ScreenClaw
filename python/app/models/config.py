@@ -24,10 +24,12 @@ class ScreenshotConfig(BaseModel):
     default_grid_opacity: int = 50
     default_grid_color: str = "#ff0000"
     default_number_density: int = 2
-    default_number_decimal: int = 0
+    default_number_decimal: int = 1
     default_number_size: int = 12
     default_number_color: str = "#ff0000"
     default_number_opacity: int = 100
+    default_number_stroke_width: int = 1
+    default_number_stroke_color: str = "#ffffff"
     image_quality: int = 85
     max_image_width: int = 1920
     default_marker_ring_radius: int = 12
@@ -82,6 +84,22 @@ class ScrollScreenshotConfig(BaseModel):
     image_quality: int = 95                 # 输出图片质量
 
 
+class SelfCheckConfig(BaseModel):
+    """截图轮数自检配置"""
+    enabled: bool = True
+    interval: int = 10
+    min_chars: int = 80
+    doc_path: str = "skills/screenclaw/references/self_check.md"
+    keywords: List[List[str]] = [
+        ["grid intersection", "do not infer coordinates"],
+        ["crop zoom", "marker verification"],
+        ["screenshot verification", "after operation"],
+        ["网格交叉点", "不能推测坐标"],
+        ["裁剪放大", "标记点验证"],
+        ["截图验证", "操作后"],
+    ]
+
+
 class AppConfig(BaseModel):
     """应用配置"""
     server: ServerConfig = ServerConfig()
@@ -92,3 +110,4 @@ class AppConfig(BaseModel):
     ui: UIConfig = UIConfig()
     delegated: DelegatedConfig = DelegatedConfig()
     scroll_screenshot: ScrollScreenshotConfig = ScrollScreenshotConfig()
+    self_check: SelfCheckConfig = SelfCheckConfig()

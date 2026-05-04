@@ -40,6 +40,8 @@ http://{host}:{port}
 
 会话id用于图片/日志保存路径、文件命名，以便用户追溯。**你必须在整个会话过程中使用同一个 session_id**
 
+同一个 `ai_app_type + session_id` 的图片会保存到首次创建的 session 目录。即使日期变化，也不要生成新 `session_id`；服务端和脚本会继续复用最早的 `data/{ai_app_type}__{session_id}__{first-created-date}/` 目录。
+
 ### 生成规则
 
 1. 格式：`{应用名}_{日期}_{时间}`
@@ -57,8 +59,9 @@ http://{host}:{port}
 
 1. **会话开始时**：生成一个唯一的 session_id（仅英文数字）
 2. **整个会话期间**：所有 API 调用都使用这个 session_id
-3. **绝对不要**：每次调用接口生成新的 session_id
-4. **用户优先**：用户明确提出开始全新任务，你才可生成新会话id
+3. **跨日期继续使用**：4月26日开始的会话，4月27日、28日仍使用同一个 session_id
+4. **绝对不要**：每次调用接口或日期变化时生成新的 session_id
+5. **用户优先**：用户明确提出开始全新任务，你才可生成新会话id
 
 ### 正确示例
 ```
@@ -66,8 +69,8 @@ http://{host}:{port}
 session_id = "claude_code_20260329_143025"
 
 # 第一次API调用
-api_call(session_id=session_id, ...)
+screenclaw(endpoint, session_id=session_id, ...)
 
 # 第N次API调用（使用相同的session_id）
-api_call(session_id=session_id, ...)
+screenclaw(endpoint, session_id=session_id, ...)
 ```

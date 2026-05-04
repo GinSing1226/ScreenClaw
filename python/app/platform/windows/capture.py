@@ -84,7 +84,7 @@ class WindowsCapture:
             return CaptureResult(
                 success=False,
                 image=None,
-                error=f"WGC 异常: {e}",
+                error=f"WGC error: {e}",
                 method="",
             )
 
@@ -112,7 +112,7 @@ class WindowsCapture:
                 return CaptureResult(
                     success=False,
                     image=None,
-                    error="窗口尺寸无效",
+                    error="Invalid window size",
                     method=""
                 )
 
@@ -142,7 +142,7 @@ class WindowsCapture:
                 return CaptureResult(
                     success=False,
                     image=None,
-                    error="创建 DIB 位图失败",
+                    error="Failed to create DIB bitmap",
                     method=""
                 )
 
@@ -208,7 +208,7 @@ class WindowsCapture:
             return CaptureResult(
                 success=False,
                 image=None,
-                error=f"截图异常: {str(e)}",
+                error=f"Screenshot error: {str(e)}",
                 method=""
             )
 

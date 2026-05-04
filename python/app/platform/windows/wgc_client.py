@@ -184,7 +184,7 @@ class WGCClient:
             (success, image, error)
         """
         if not self.ensure_running():
-            return False, None, "WGC 服务不可用"
+            return False, None, "WGC service is unavailable"
 
         try:
             body = json.dumps({"hwnd": hwnd}).encode("utf-8")
@@ -201,7 +201,7 @@ class WGCClient:
 
             image_path = data.get("image_path")
             if not image_path or not os.path.exists(image_path):
-                return False, None, f"WGC: 图片文件不存在 {image_path}"
+                return False, None, f"WGC image file not found: {image_path}"
 
             image = Image.open(image_path).convert("RGB")
             return True, image, None

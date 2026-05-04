@@ -1,8 +1,11 @@
-"""
+﻿"""
 操作API - 点击、长按、滑动、拖拽、滚动、右键、等待
 """
 import random
 import time
+import sys
+from datetime import datetime
+from pathlib import Path
 from fastapi import APIRouter, Header, Request
 
 from app.models.request import (
@@ -26,6 +29,29 @@ from app.utils.coordinate import restore_window_and_calc_coords
 from app.api.decorators import with_verification, log_and_format, with_hijack_confirm
 
 router = APIRouter()
+
+
+def _write_action_debug_log(message: str):
+    """写入操作调试日志到文件"""
+    try:
+        # 确定日志目录
+        if getattr(sys, 'frozen', False):
+            exe_dir = Path(sys.executable).parent
+            log_dir = exe_dir / "logs"
+        else:
+            log_dir = Path(__file__).parent.parent.parent.parent / "logs"
+
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        # 日志文件名：action__YYYY-MM-DD.log
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        log_path = log_dir / f"action__{date_str}.log"
+
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(f"[{timestamp}] {message}\n")
+    except Exception:
+        pass  # 避免日志写入失败影响主流程
 
 
 def _calc_coords(hwnd: int, x: float, y: float, main_window_id: int = None):
@@ -56,10 +82,17 @@ async def click(request: ClickRequest, req: Request = None, authorization: str =
         return create_error_response("INTERNAL_ERROR", "Cannot get window rectangle. The window may have been closed or minimized. Refer to skill.md for troubleshooting.")
     physical_x, physical_y, virtual_x, virtual_y = coords
 
-    # 调试日志：坐标计算
-    print(f"[CoordCalc] window_id={request.window_id}, main_window_id={request.main_window_id}")
-    print(f"[CoordCalc] physical=({physical_x}, {physical_y})")
-    print(f"[CoordCalc] virtual=({virtual_x}, {virtual_y})")
+    # 调试日志：坐标计算（同时输出到控制台和文件）
+    debug_lines = [
+        f"Click: window_id={request.window_id}, main_window_id={request.main_window_id}",
+        f"  input%: ({request.x}, {request.y})",
+        f"  physical: ({physical_x}, {physical_y})",
+        f"  virtual: ({virtual_x}, {virtual_y})",
+        f"  method: {request.action_method}"
+    ]
+    for line in debug_lines:
+        print(f"[CoordCalc] {line}")
+        _write_action_debug_log(f"[CoordCalc] {line}")
 
     # 执行点击
     inject_result = windows_input.click(
@@ -70,8 +103,14 @@ async def click(request: ClickRequest, req: Request = None, authorization: str =
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning.")
+        result_msg = f"Click succeeded: method={inject_result.method}"
+        print(f"[CoordCalc] {result_msg}")
+        _write_action_debug_log(result_msg)
+        return BaseResponse(success=True, message="Command sent.")
     else:
+        error_msg = f"Click failed: {inject_result.error}"
+        print(f"[CoordCalc] {error_msg}")
+        _write_action_debug_log(error_msg)
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
 
@@ -97,7 +136,7 @@ async def long_press(request: LongPressRequest, req: Request = None, authorizati
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning.")
+        return BaseResponse(success=True, message="Command sent.")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -128,7 +167,7 @@ async def swipe(request: SwipeRequest, req: Request = None, authorization: str =
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning.")
+        return BaseResponse(success=True, message="Command sent.")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -172,7 +211,7 @@ async def drag(request: DragRequest, req: Request = None, authorization: str = H
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning.")
+        return BaseResponse(success=True, message="Command sent.")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -192,7 +231,7 @@ async def mouse_move(request: MouseMoveRequest, req: Request = None, authorizati
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning.")
+        return BaseResponse(success=True, message="Command sent.")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -218,7 +257,7 @@ async def scroll(request: ScrollRequest, req: Request = None, authorization: str
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning.")
+        return BaseResponse(success=True, message="Command sent.")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -244,7 +283,7 @@ async def hover(request: HoverRequest, req: Request = None, authorization: str =
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning.")
+        return BaseResponse(success=True, message="Command sent.")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -269,7 +308,7 @@ async def right_click(request: RightClickRequest, req: Request = None, authoriza
     )
 
     if inject_result.success:
-        return BaseResponse(success=True, message="Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning.")
+        return BaseResponse(success=True, message="Command sent.")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -304,4 +343,5 @@ async def wait(request: WaitRequest, req: Request = None, authorization: str = H
         client_ip=client_ip
     )
 
-    return BaseResponse(success=True, message="Wait completed")
+    return BaseResponse(success=True, message="Wait completed.")
+

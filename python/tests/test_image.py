@@ -99,10 +99,24 @@ class TestImageProcessing:
         assert os.path.exists(data_dir)
         assert "claude_code__session_001" in data_dir
 
-        # 包含日期
+        # 首次创建时包含当前日期
         from datetime import datetime
         date_str = datetime.now().strftime("%Y-%m-%d")
         assert date_str in data_dir
+
+    def test_generate_data_dir_reuses_existing_session_dir(self, tmp_path, monkeypatch):
+        """同一 session 跨日期复用首次创建目录"""
+        from app.utils import image
+        monkeypatch.setattr(image, "get_project_root", lambda: tmp_path)
+
+        existing = tmp_path / "data" / "claude_code__session_001__2026-04-26"
+        newer = tmp_path / "data" / "claude_code__session_001__2026-04-27"
+        existing.mkdir(parents=True)
+        newer.mkdir(parents=True)
+
+        data_dir = generate_data_dir("data", "claude_code", "session_001")
+
+        assert data_dir == str(existing)
 
     def test_rgba_to_jpeg_conversion(self, tmp_path):
         """测试RGBA转JPEG"""

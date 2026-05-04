@@ -1,55 +1,33 @@
 ---
 name: mouse_move
-description: 相对位移移动鼠标（游戏视角控制），使用 mouse_event 硬件级事件。适用：游戏中通过鼠标移动控制视角、需要发送硬件级鼠标移动事件（Raw Input / DirectInput）。不适用：瞬移鼠标到目标位置（用hover）、按住左键拖拽（用drag）、快速触摸式滑动（用swipe）、无感后台操作（不支持background）。约束：仅支持 hijack 和 delegated（托管）模式，不支持 background。
+description: 相对位移移动鼠标，用于游戏视角控制和硬件级鼠标移动。不支持 background。
 ---
 
 # mouse_move - 鼠标移动
 
-## 请求
+## 快速决策
 
-**方法**：POST `/api/mouse_move`
+- 只用于相对移动视角，不用于移动到某个坐标；移动到坐标用 hover。
+- 仅支持 `hijack` 和托管模式。
+- 游戏视角需要截图 -> 调整 delta -> 截图循环，不必精确计算角度。
 
-**请求头**：
+## 脚本调用
+
+```bash
+python scripts/screenclaw.py mouse_move api_url={api_url} token={token} ai_app_type={ai_app_type} session_id={session_id} window_id={window_id} main_window_id={main_window_id} delta_x=200 delta_y=0 duration_ms=300 action_method=hijack
 ```
-Authorization: Bearer {token}
-Content-Type: application/json
-```
 
-### 请求参数
+## 请求参数
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `ai_app_type` | string | 是 | - | AI应用类型 |
-| `session_id` | string | 是 | - | 会话唯一标识 |
-| `window_id` | int | 是 | - | 目标窗口句柄 |
-| `main_window_id` | int | 否 | - | 主窗口ID |
-| `delta_x` | int | 是 | - | 水平相对位移（像素），正值向右，负值向左 |
-| `delta_y` | int | 是 | - | 垂直相对位移（像素），正值向下，负值向上 |
-| `duration_ms` | int | 否 | 300 | 移动时长（毫秒），控制移动速度 |
-| `action_method` | string | 否 | "hijack" | 操作方式：hijack（托管模式下自动路由为 delegated） |
-
-
-### 请求示例
-
-```json
-{
-  "ai_app_type": "claude_code",
-  "session_id": "session-123",
-  "window_id": 1001,
-  "main_window_id": 1001,
-  "delta_x": 200,
-  "delta_y": 0,
-  "duration_ms": 300,
-  "action_method": "hijack"
-}
-```
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `delta_x` | int | 是 | 水平相对位移，正值向右 |
+| `delta_y` | int | 是 | 垂直相对位移，正值向下 |
+| `duration_ms` | int | 否 | 移动时长，默认 300 |
+| `action_method` | string | 否 | `hijack`；托管模式下自动路由 |
 
 ## 常见问题
 
-### 遇到问题时的排查顺序
-1. **API成功但游戏视角没变** → 增大 delta 值（游戏灵敏度可能较低）
-2. **API调用失败** → 确认使用 hijack 模式
-
-### 操作技巧
-- **delta 值说明**：实际旋转角度取决于游戏灵敏度设置，需要通过截图-调整-截图循环来确定合适的值。旋转的目的是找到目标元素，不必纠结旋转了多少角度。
-- **只顺着一个方向旋转**：不要先右旋，又左旋，这样只会让你保持原角度。要一直右旋，就能360°。
+1. **视角没变**：增大 delta，确认使用 `hijack` 或托管。
+2. **来回抵消**：不要先右移又左移；找目标时保持同一方向扫描。
+3. **需要连续实时控制**：请求用户确认进入托管模式。

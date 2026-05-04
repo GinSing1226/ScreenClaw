@@ -12,6 +12,7 @@ export interface LogItem {
   instruction: string
   params: Record<string, any>
   result: Record<string, any>
+  duration_ms: number
 }
 
 export interface LogFilter {

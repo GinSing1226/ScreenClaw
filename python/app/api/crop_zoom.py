@@ -14,6 +14,7 @@ from app.models.response import (
 from app.services.log_service import log_service
 from app.utils.image import (
     image_to_base64,
+    base64_to_image,
     save_image,
     generate_crop_zoom_filename,
     generate_data_dir,
@@ -32,6 +33,40 @@ def is_local_request(client_ip: str) -> bool:
     return client_ip in local_ips
 
 
+def _requested_crop_params(request: CropZoomRequest) -> dict:
+    params = request.model_dump(exclude={"source_image_base64"}, exclude_none=True)
+    if request.source_image_base64:
+        params["source_image_base64"] = "<provided>"
+    return params
+
+
+def _effective_crop_params(request: CropZoomRequest, source_size, output_size) -> dict:
+    img_w, img_h = source_size
+    center_x_px = img_w * request.center_x / 100
+    center_y_px = img_h * request.center_y / 100
+    crop_w_px = img_w * request.crop_width / 100
+    crop_h_px = img_h * request.crop_height / 100
+    left = max(0, center_x_px - crop_w_px / 2)
+    top = max(0, center_y_px - crop_h_px / 2)
+    right = min(img_w, center_x_px + crop_w_px / 2)
+    bottom = min(img_h, center_y_px + crop_h_px / 2)
+    return {
+        "center_x": request.center_x,
+        "center_y": request.center_y,
+        "crop_width": request.crop_width,
+        "crop_height": request.crop_height,
+        "zoom_scale": request.zoom_scale,
+        "source_size": {"width": img_w, "height": img_h},
+        "crop_box_px": {
+            "left": round(left, 2),
+            "top": round(top, 2),
+            "right": round(right, 2),
+            "bottom": round(bottom, 2),
+        },
+        "output_size": {"width": output_size[0], "height": output_size[1]},
+    }
+
+
 @router.post("/crop_zoom_screenshot")
 async def crop_zoom_screenshot(
     request: CropZoomRequest,
@@ -42,62 +77,71 @@ async def crop_zoom_screenshot(
     client_ip = get_client_ip(req) if req else "unknown"
     start_time = time.time()
 
-    # 1. 路径校验
-    path_error = validate_source_image_path(request.source_image_path)
-    if path_error:
+    # 1. 参数校验：path 和 base64 二选一
+    if not request.source_image_path and not request.source_image_base64:
         log_service.log(
             ai_app_type=request.ai_app_type,
             session_id=request.session_id,
             window_id=0,
             process_name="",
             instruction="crop_zoom_screenshot",
-            params=request.model_dump(),
-            result={"success": False, "message": path_error},
+            params=request.model_dump(exclude={"source_image_base64"}),
+            result={"success": False, "message": "Either source_image_path or source_image_base64 must be provided"},
             client_ip=client_ip
         )
-        return create_error_response("INVALID_PARAMS", path_error)
+        return create_error_response("INVALID_PARAMS", "Either source_image_path or source_image_base64 must be provided")
 
-    # 2. 校验源图片是否存在
-    if not os.path.exists(request.source_image_path):
+    if request.source_image_path and request.source_image_base64:
         log_service.log(
             ai_app_type=request.ai_app_type,
             session_id=request.session_id,
             window_id=0,
             process_name="",
             instruction="crop_zoom_screenshot",
-            params=request.model_dump(),
-            result={"success": False, "message": f"Image file not found: {request.source_image_path}"},
+            params=request.model_dump(exclude={"source_image_base64"}),
+            result={"success": False, "message": "Only one of source_image_path or source_image_base64 should be provided"},
             client_ip=client_ip
         )
-        return create_error_response(
-            "FILE_NOT_FOUND",
-            f"Image file not found: {request.source_image_path}. Check if the file exists or the path is correct."
-        )
+        return create_error_response("INVALID_PARAMS", "Only one of source_image_path or source_image_base64 should be provided")
 
-    # 3. 读取并裁剪放大
+    # 2. 加载源图片
+    source_image = None
     try:
-        with Image.open(request.source_image_path) as source_image:
-            try:
-                zoomed = crop_and_zoom(
-                    source_image,
-                    center_x=request.center_x,
-                    center_y=request.center_y,
-                    crop_width=request.crop_width,
-                    crop_height=request.crop_height,
-                    zoom_scale=request.zoom_scale
-                )
-            except ValueError as e:
+        if request.source_image_base64:
+            # 从 base64 加载
+            source_image = base64_to_image(request.source_image_base64)
+        else:
+            # 从路径加载
+            path_error = validate_source_image_path(request.source_image_path)
+            if path_error:
                 log_service.log(
                     ai_app_type=request.ai_app_type,
                     session_id=request.session_id,
                     window_id=0,
                     process_name="",
                     instruction="crop_zoom_screenshot",
-                    params=request.model_dump(),
-                    result={"success": False, "message": str(e)},
+                    params=request.model_dump(exclude={"source_image_base64"}),
+                    result={"success": False, "message": path_error},
                     client_ip=client_ip
                 )
-                return create_error_response("INVALID_PARAMS", str(e))
+                return create_error_response("INVALID_PARAMS", path_error)
+
+            if not os.path.exists(request.source_image_path):
+                log_service.log(
+                    ai_app_type=request.ai_app_type,
+                    session_id=request.session_id,
+                    window_id=0,
+                    process_name="",
+                    instruction="crop_zoom_screenshot",
+                    params=request.model_dump(exclude={"source_image_base64"}),
+                    result={"success": False, "message": f"Image file not found: {request.source_image_path}"},
+                    client_ip=client_ip
+                )
+                return create_error_response(
+                    "FILE_NOT_FOUND",
+                    f"Image file not found. Reason: {request.source_image_path}. Next: use the image_path returned by the latest screenshot or pass source_image_base64 for remote clients. See references/api/crop_zoom_screenshot.md."
+                )
+            source_image = Image.open(request.source_image_path)
     except Exception as e:
         log_service.log(
             ai_app_type=request.ai_app_type,
@@ -105,14 +149,37 @@ async def crop_zoom_screenshot(
             window_id=0,
             process_name="",
             instruction="crop_zoom_screenshot",
-            params=request.model_dump(),
-            result={"success": False, "message": f"Failed to read image: {request.source_image_path}"},
+            params=request.model_dump(exclude={"source_image_base64"}),
+            result={"success": False, "message": f"Failed to load source image"},
             client_ip=client_ip
         )
         return create_error_response(
             "INVALID_PARAMS",
-            f"Failed to read image: {request.source_image_path}. Unsupported format or corrupted file."
+            f"Failed to load source image. Check the input format."
         )
+
+    # 3. 裁剪放大
+    try:
+        zoomed = crop_and_zoom(
+            source_image,
+            center_x=request.center_x,
+            center_y=request.center_y,
+            crop_width=request.crop_width,
+            crop_height=request.crop_height,
+            zoom_scale=request.zoom_scale
+        )
+    except ValueError as e:
+        log_service.log(
+            ai_app_type=request.ai_app_type,
+            session_id=request.session_id,
+            window_id=0,
+            process_name="",
+            instruction="crop_zoom_screenshot",
+            params=request.model_dump(exclude={"source_image_base64"}),
+            result={"success": False, "message": str(e)},
+            client_ip=client_ip
+        )
+        return create_error_response("INVALID_PARAMS", str(e))
 
     # 4. 保存
     data_dir = generate_data_dir("data", request.ai_app_type, request.session_id)
@@ -125,26 +192,44 @@ async def crop_zoom_screenshot(
 
     duration_ms = int((time.time() - start_time) * 1000)
 
+    is_local = is_local_request(client_ip)
+    requested_params = _requested_crop_params(request)
+    effective_crop = _effective_crop_params(request, source_image.size, zoomed.size)
+    if is_local:
+        screenshot_data = ScreenshotData(
+            image_path=os.path.abspath(image_path),
+            requested_params=requested_params,
+            effective_params=effective_crop,
+            effective_crop=effective_crop,
+            source_image_path=request.source_image_path,
+        )
+    else:
+        screenshot_data = ScreenshotData(
+            image_base64=image_base64,
+            requested_params=requested_params,
+            effective_params=effective_crop,
+            effective_crop=effective_crop,
+            source_image_path=request.source_image_path,
+        )
+
     log_service.log(
         ai_app_type=request.ai_app_type,
         session_id=request.session_id,
         window_id=0,
         process_name="",
         instruction="crop_zoom_screenshot",
-        params=request.model_dump(),
-        result={"success": True, "image_path": image_path},
+        params=request.model_dump(exclude={"source_image_base64"}),
+        result={
+            "success": True,
+            "message": "Crop zoom successful.",
+            "data": screenshot_data.model_dump(exclude={"image_base64"})
+        },
         duration_ms=duration_ms,
         client_ip=client_ip
     )
 
-    is_local = is_local_request(client_ip)
-    if is_local:
-        screenshot_data = ScreenshotData(image_path=os.path.abspath(image_path))
-    else:
-        screenshot_data = ScreenshotData(image_base64=image_base64)
-
     return ScreenshotResponse(
         success=True,
-        message="Crop zoom successful. If details are still unclear, adjust parameters and process the same source image again.",
+        message="Crop zoom successful.",
         data=screenshot_data
     )

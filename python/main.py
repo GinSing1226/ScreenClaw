@@ -96,7 +96,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content=BaseResponse(
             success=False,
-            message="Internal server error. Refer to skill.md for troubleshooting.",
+            message="Internal server error. Next: check service logs and retry. See references/api/health.md.",
             error_code="INTERNAL_ERROR"
         ).model_dump()
     )
@@ -129,6 +129,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     """422 参数校验错误处理"""
     errors = exc.errors()
     parts = []
+    endpoint = request.url.path.rstrip("/").split("/")[-1] or "unknown"
     for e in errors:
         field = e["loc"][-1] if e.get("loc") else "unknown"
         desc = FIELD_DESCRIPTIONS.get(field, field)
@@ -138,7 +139,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         status_code=422,
         content=BaseResponse(
             success=False,
-            message=f"Invalid request parameters: {details}. Refer to skill.md for parameter details.",
+            message=f"Invalid request parameters. Reason: {details}. Next: fix the field and retry. See references/api/{endpoint}.md.",
             error_code="INVALID_PARAMS"
         ).model_dump()
     )

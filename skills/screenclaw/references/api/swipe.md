@@ -1,55 +1,34 @@
 ---
 name: swipe
-description: 从起始坐标滑动到终止坐标，触摸式滑动。适用：触摸式滑动（如移动应用模拟器、游戏）、上下左右翻页。不适用：鼠标滚轮滚动（用scroll）、简单点击（用click）、选中物体并移动（用drag）。
+description: 从起始坐标滑动到终止坐标，触摸式滑动。适用：移动应用、模拟器、游戏、上下左右翻页。不适用：鼠标滚轮滚动用 scroll，拖动物体用 drag。
 ---
 
 # swipe - 滑动
 
-## 请求
+## 快速决策
 
-**方法**：POST `/api/swipe`
+- 移动端、模拟器、游戏优先考虑 swipe。
+- 桌面滚轮页面优先用 `scroll`。
+- 起点和终点都必须来自截图坐标。
 
-**请求头**：
+## 脚本调用
+
+```bash
+python scripts/screenclaw.py swipe api_url={api_url} token={token} ai_app_type={ai_app_type} session_id={session_id} window_id={window_id} main_window_id={main_window_id} start_x=50 start_y=80 end_x=50 end_y=20 action_method=background
 ```
-Authorization: Bearer {token}
-Content-Type: application/json
-```
 
-### 请求参数
+## 请求参数
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `ai_app_type` | string | 是 | - | AI应用类型 |
-| `session_id` | string | 是 | - | 会话唯一标识 |
-| `window_id` | int | 是 | - | 目标窗口句柄（建议优先使用子窗口） |
-| `main_window_id` | int | 是 | - | 主窗口ID |
-| `start_x` | float | 是 | - | 起始横坐标 |
-| `start_y` | float | 是 | - | 起始纵坐标 |
-| `end_x` | float | 是 | - | 结束横坐标 |
-| `end_y` | float | 是 | - | 结束纵坐标 |
-| `action_method` | string | 否 | "background" | 操作方式：background/hijack |
-
-### 请求示例
-
-```json
-{
-  "ai_app_type": "claude_code",
-  "session_id": "session-123",
-  "window_id": 1001,
-  "main_window_id": 1001,
-  "start_x": 50.0,
-  "start_y": 80.0,
-  "end_x": 50.0,
-  "end_y": 20.0,
-  "action_method": "background"
-}
-```
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `start_x` | float | 是 | 起始横坐标 |
+| `start_y` | float | 是 | 起始纵坐标 |
+| `end_x` | float | 是 | 结束横坐标 |
+| `end_y` | float | 是 | 结束纵坐标 |
+| `action_method` | string | 否 | `background` 或 `hijack` |
 
 ## 常见问题
 
-### 遇到问题时的排查顺序
-1. **API成功但效果与预期不同** → 按照 skill.md 步骤10 验证，换坐标、换窗口重试
-2. **API调用失败** → 对照请求参数检查参数格式
-
-### 操作技巧
-- **代替滚动**：在部分软件里滚动可能不生效，可尝试用滑动代替。特别是移动端、游戏等软件
+1. **滑动无效**：确认窗口和坐标，必要时换子窗口。
+2. **方向反了**：重新检查起点终点，不要用内部视觉坐标推测。
+3. **滚轮不生效的页面**：用 swipe 替代 scroll。

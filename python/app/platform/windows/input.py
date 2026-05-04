@@ -28,10 +28,45 @@ import subprocess
 import sys
 import base64
 import ctypes
+import math
+import random
+import os
+from datetime import datetime
+from pathlib import Path
 
 import win32gui
 import win32api
 import win32con
+
+
+def _get_debug_log_path() -> str:
+    """获取调试日志文件路径"""
+    # 确定日志目录
+    if getattr(sys, 'frozen', False):
+        # 打包环境：exe 所在目录
+        exe_dir = Path(sys.executable).parent
+        log_dir = exe_dir / "logs"
+    else:
+        # 开发环境：项目根目录
+        log_dir = Path(__file__).parent.parent.parent.parent / "logs"
+
+    # 确保目录存在
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    # 日志文件名：debug__YYYY-MM-DD.log
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    return str(log_dir / f"debug__{date_str}.log")
+
+
+def _write_debug_log(message: str):
+    """写入调试日志到文件"""
+    try:
+        log_path = _get_debug_log_path()
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(f"[{timestamp}] {message}\n")
+    except Exception:
+        pass  # 避免日志写入失败影响主流程
 
 
 @dataclass
@@ -44,6 +79,89 @@ class InjectResult:
 
 # 修饰键 VK 集合
 MODIFIER_VKS = {0x11, 0x12, 0x10, 0x5B}  # Ctrl, Alt, Shift, Win
+
+
+def generate_humanized_path(sx: int, sy: int, ex: int, ey: int, steps: int = 10) -> List[Tuple[int, int]]:
+    """生成人类化鼠标移动路径（贝塞尔曲线 + 缓动 + 微抖动）
+
+    用于已知起点和终点的场景（drag/swipe），直接生成绝对坐标路径。
+
+    Args:
+        sx, sy: 起点屏幕坐标（像素）
+        ex, ey: 终点屏幕坐标（像素）
+        steps: 路径点数量
+
+    Returns:
+        坐标点列表，不含起点（从第一个中间点到终点）
+    """
+    distance = math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2)
+
+    if distance < 3:
+        return [(int(ex), int(ey))]
+
+    mid_x = (sx + ex) / 2
+    mid_y = (sy + ey) / 2
+    dx = ex - sx
+    dy = ey - sy
+    perp_x = -dy / distance
+    perp_y = dx / distance
+
+    offset = distance * random.uniform(-0.15, 0.15)
+    ctrl_x = mid_x + perp_x * offset
+    ctrl_y = mid_y + perp_y * offset
+
+    points = []
+    for i in range(1, steps + 1):
+        t = i / steps
+
+        if t < 0.5:
+            eased_t = 4 * t * t * t
+        else:
+            eased_t = 1 - pow(-2 * t + 2, 3) / 2
+
+        bx = (1 - eased_t) ** 2 * sx + 2 * (1 - eased_t) * eased_t * ctrl_x + eased_t ** 2 * ex
+        by = (1 - eased_t) ** 2 * sy + 2 * (1 - eased_t) * eased_t * ctrl_y + eased_t ** 2 * ey
+
+        jitter = min(2.0, distance / 200)
+        jx = bx + random.uniform(-jitter, jitter)
+        jy = by + random.uniform(-jitter, jitter)
+
+        points.append((int(round(jx)), int(round(jy))))
+
+    return points
+
+
+# 子进程内联代码：用于起点未知（光标当前位置）的单点移动场景
+_HUMANIZED_PATH_INLINE = '''
+import math, random
+def _gen_path(sx, sy, ex, ey, steps=10):
+    distance = math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2)
+    if distance < 3:
+        return [(int(ex), int(ey))]
+    mid_x = (sx + ex) / 2
+    mid_y = (sy + ey) / 2
+    dx = ex - sx
+    dy = ey - sy
+    perp_x = -dy / distance
+    perp_y = dx / distance
+    offset = distance * random.uniform(-0.15, 0.15)
+    ctrl_x = mid_x + perp_x * offset
+    ctrl_y = mid_y + perp_y * offset
+    points = []
+    for i in range(1, steps + 1):
+        t = i / steps
+        if t < 0.5:
+            eased_t = 4 * t * t * t
+        else:
+            eased_t = 1 - pow(-2 * t + 2, 3) / 2
+        bx = (1 - eased_t) ** 2 * sx + 2 * (1 - eased_t) * eased_t * ctrl_x + eased_t ** 2 * ex
+        by = (1 - eased_t) ** 2 * sy + 2 * (1 - eased_t) * eased_t * ctrl_y + eased_t ** 2 * ey
+        jitter = min(2.0, distance / 200)
+        jx = bx + random.uniform(-jitter, jitter)
+        jy = by + random.uniform(-jitter, jitter)
+        points.append((int(round(jx)), int(round(jy))))
+    return points
+'''
 
 
 class WindowsInputInjector:
@@ -139,51 +257,56 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
 
     def _delegated_click(self, hwnd: int, virtual_x: int, virtual_y: int) -> bool:
         """Delegated 点击 - 激活窗口 + mouse_event 硬件级点击，不恢复状态"""
+        screen_x, screen_y = self._client_to_screen(hwnd, virtual_x, virtual_y)
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
+{_HUMANIZED_PATH_INLINE}
 
 hwnd = {hwnd}
 virtual_x = {virtual_x}
 virtual_y = {virtual_y}
+screen_x = {screen_x}
+screen_y = {screen_y}
 
-# 计算屏幕坐标
-screen_x, screen_y = win32gui.ClientToScreen(hwnd, (virtual_x, virtual_y))
-
-# 激活目标窗口（先检查窗口状态）
+# 激活目标窗口（已在前台则跳过，避免触发 WM_ACTIVATE 破坏应用临时 UI 状态）
 main_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
+_need_activate = ctypes.windll.user32.GetForegroundWindow() != main_hwnd
 
 # 仅在窗口最小化或隐藏时才恢复
 if win32gui.IsIconic(main_hwnd):
     win32gui.ShowWindow(main_hwnd, win32con.SW_RESTORE)
     time.sleep(0.2)
+    _need_activate = True
 elif not win32gui.IsWindowVisible(main_hwnd):
     win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
     time.sleep(0.1)
+    _need_activate = True
 
-# 先强制释放可能的鼠标捕获（防止游戏处于拖拽/捕获状态导致死锁）
-try:
-    ctypes.windll.user32.ReleaseCapture()
-except:
-    pass
-
-target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
-current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
-ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
-
-# 激活窗口，带异常处理
-try:
-    win32gui.SetForegroundWindow(main_hwnd)
-except Exception:
+if _need_activate:
+    # 先强制释放可能的鼠标捕获（防止游戏处于拖拽/捕获状态导致死锁）
     try:
-        win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
-        ctypes.windll.user32.BringWindowToTop(main_hwnd)
-    except Exception:
+        ctypes.windll.user32.ReleaseCapture()
+    except:
         pass
+    target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
+    current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
+    try:
+        win32gui.SetForegroundWindow(main_hwnd)
+    except Exception:
+        try:
+            win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+            ctypes.windll.user32.BringWindowToTop(main_hwnd)
+        except Exception:
+            pass
+    time.sleep(0.1)
 
-time.sleep(0.3)
-
-win32api.SetCursorPos((screen_x, screen_y))
-time.sleep(0.3)
+# 人类化移动路径
+cursor = win32api.GetCursorPos()
+path = _gen_path(cursor[0], cursor[1], screen_x, screen_y, 10)
+for cx, cy in path:
+    win32api.SetCursorPos((cx, cy))
+    time.sleep(0.008)
 
 # 使用 mouse_event 硬件级点击（与 hijack 一致）
 MOUSEEVENTF_LEFTDOWN = 0x0002
@@ -192,43 +315,48 @@ ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
 time.sleep(0.05)
 ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
 
-# 断开线程绑定
-ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
+if _need_activate:
+    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
 '''
         return self._run_subprocess(code, timeout=15)
 
     def _delegated_right_click(self, hwnd: int, virtual_x: int, virtual_y: int) -> bool:
         """Delegated 右键 - 激活窗口 + mouse_event 硬件级右键，不恢复状态"""
+        screen_x, screen_y = self._client_to_screen(hwnd, virtual_x, virtual_y)
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
+{_HUMANIZED_PATH_INLINE}
 
 hwnd = {hwnd}
 virtual_x = {virtual_x}
 virtual_y = {virtual_y}
+screen_x = {screen_x}
+screen_y = {screen_y}
 
-# 计算屏幕坐标
-screen_x, screen_y = win32gui.ClientToScreen(hwnd, (virtual_x, virtual_y))
-
-# 激活目标窗口
+# 激活目标窗口（已在前台则跳过，避免触发 WM_ACTIVATE 破坏应用临时 UI 状态）
 main_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
-target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
-current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
-ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
+_need_activate = ctypes.windll.user32.GetForegroundWindow() != main_hwnd
 
-# 激活窗口，带异常处理
-try:
-    win32gui.SetForegroundWindow(main_hwnd)
-except Exception:
+if _need_activate:
+    target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
+    current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
     try:
-        win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
-        ctypes.windll.user32.BringWindowToTop(main_hwnd)
+        win32gui.SetForegroundWindow(main_hwnd)
     except Exception:
-        pass
+        try:
+            win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+            ctypes.windll.user32.BringWindowToTop(main_hwnd)
+        except Exception:
+            pass
+    time.sleep(0.1)
 
-time.sleep(0.3)
-
-win32api.SetCursorPos((screen_x, screen_y))
-time.sleep(0.3)
+# 人类化移动路径
+cursor = win32api.GetCursorPos()
+path = _gen_path(cursor[0], cursor[1], screen_x, screen_y, 10)
+for cx, cy in path:
+    win32api.SetCursorPos((cx, cy))
+    time.sleep(0.008)
 
 # 使用 mouse_event 硬件级右键（与 hijack 一致）
 MOUSEEVENTF_RIGHTDOWN = 0x0008
@@ -237,44 +365,49 @@ ctypes.windll.user32.mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0)
 time.sleep(0.05)
 ctypes.windll.user32.mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0)
 
-# 断开线程绑定
-ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
+if _need_activate:
+    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
 '''
         return self._run_subprocess(code, timeout=15)
 
     def _delegated_long_press(self, hwnd: int, virtual_x: int, virtual_y: int, duration_ms: int) -> bool:
         """Delegated 长按 - 激活窗口 + mouse_event 硬件级长按，不恢复状态"""
+        screen_x, screen_y = self._client_to_screen(hwnd, virtual_x, virtual_y)
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
+{_HUMANIZED_PATH_INLINE}
 
 hwnd = {hwnd}
 virtual_x = {virtual_x}
 virtual_y = {virtual_y}
 duration_ms = {duration_ms}
+screen_x = {screen_x}
+screen_y = {screen_y}
 
-# 计算屏幕坐标
-screen_x, screen_y = win32gui.ClientToScreen(hwnd, (virtual_x, virtual_y))
-
-# 激活目标窗口
+# 激活目标窗口（已在前台则跳过，避免触发 WM_ACTIVATE 破坏应用临时 UI 状态）
 main_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
-target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
-current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
-ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
+_need_activate = ctypes.windll.user32.GetForegroundWindow() != main_hwnd
 
-# 激活窗口，带异常处理
-try:
-    win32gui.SetForegroundWindow(main_hwnd)
-except Exception:
+if _need_activate:
+    target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
+    current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
     try:
-        win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
-        ctypes.windll.user32.BringWindowToTop(main_hwnd)
+        win32gui.SetForegroundWindow(main_hwnd)
     except Exception:
-        pass
+        try:
+            win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+            ctypes.windll.user32.BringWindowToTop(main_hwnd)
+        except Exception:
+            pass
+    time.sleep(0.1)
 
-time.sleep(0.3)
-
-win32api.SetCursorPos((screen_x, screen_y))
-time.sleep(0.3)
+# 人类化移动路径
+cursor = win32api.GetCursorPos()
+path = _gen_path(cursor[0], cursor[1], screen_x, screen_y, 10)
+for cx, cy in path:
+    win32api.SetCursorPos((cx, cy))
+    time.sleep(0.008)
 
 # 使用 mouse_event 硬件级长按（与 hijack 一致）
 MOUSEEVENTF_LEFTDOWN = 0x0002
@@ -286,14 +419,18 @@ time.sleep(duration_ms / 1000)
 
 ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
 
-# 断开线程绑定
-ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
+if _need_activate:
+    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
 '''
         return self._run_subprocess(code, timeout=max(15, duration_ms / 1000 + 15))
 
     def _delegated_swipe(self, hwnd: int, virtual_sx: int, virtual_sy: int,
                        virtual_ex: int, virtual_ey: int) -> bool:
         """Delegated 滑动 - 激活窗口 + mouse_event 硬件级拖拽，不恢复状态"""
+        screen_sx, screen_sy = self._client_to_screen(hwnd, virtual_sx, virtual_sy)
+        screen_ex, screen_ey = self._client_to_screen(hwnd, virtual_ex, virtual_ey)
+        path = generate_humanized_path(screen_sx, screen_sy, screen_ex, screen_ey, steps=10)
+        duration = 0.3
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
 
@@ -302,28 +439,26 @@ virtual_sx = {virtual_sx}
 virtual_sy = {virtual_sy}
 virtual_ex = {virtual_ex}
 virtual_ey = {virtual_ey}
+screen_sx = {screen_sx}
+screen_sy = {screen_sy}
 
-# 计算屏幕坐标
-screen_sx, screen_sy = win32gui.ClientToScreen(hwnd, (virtual_sx, virtual_sy))
-screen_ex, screen_ey = win32gui.ClientToScreen(hwnd, (virtual_ex, virtual_ey))
-
-# 激活目标窗口
+# 激活目标窗口（已在前台则跳过，避免触发 WM_ACTIVATE 破坏应用临时 UI 状态）
 main_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
-target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
-current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
-ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
+_need_activate = ctypes.windll.user32.GetForegroundWindow() != main_hwnd
 
-# 激活窗口，带异常处理
-try:
-    win32gui.SetForegroundWindow(main_hwnd)
-except Exception:
+if _need_activate:
+    target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
+    current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
     try:
-        win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
-        ctypes.windll.user32.BringWindowToTop(main_hwnd)
+        win32gui.SetForegroundWindow(main_hwnd)
     except Exception:
-        pass
-
-time.sleep(0.3)
+        try:
+            win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+            ctypes.windll.user32.BringWindowToTop(main_hwnd)
+        except Exception:
+            pass
+    time.sleep(0.1)
 
 win32api.SetCursorPos((screen_sx, screen_sy))
 time.sleep(0.1)
@@ -334,21 +469,18 @@ MOUSEEVENTF_LEFTUP = 0x0004
 ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
 time.sleep(0.05)
 
-# 分步移动
-steps = 10
-duration = 0.3
-step_delay = duration / steps
-for i in range(1, steps + 1):
-    progress = i / steps
-    screen_cx = int(screen_sx + (screen_ex - screen_sx) * progress)
-    screen_cy = int(screen_sy + (screen_ey - screen_sy) * progress)
-    win32api.SetCursorPos((screen_cx, screen_cy))
+# 人类化路径移动
+path = {path}
+duration = {duration}
+step_delay = duration / len(path)
+for cx, cy in path:
+    win32api.SetCursorPos((cx, cy))
     time.sleep(step_delay)
 
 ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
 
-# 断开线程绑定
-ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
+if _need_activate:
+    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
 '''
         return self._run_subprocess(code, timeout=15)
 
@@ -356,6 +488,9 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
                         virtual_ex: int, virtual_ey: int, duration_ms: int = 500) -> bool:
         """Delegated 拖拽 - 激活窗口 + mouse_event 硬件级拖拽，不恢复状态"""
         duration = duration_ms / 1000.0
+        screen_sx, screen_sy = self._client_to_screen(hwnd, virtual_sx, virtual_sy)
+        screen_ex, screen_ey = self._client_to_screen(hwnd, virtual_ex, virtual_ey)
+        path = generate_humanized_path(screen_sx, screen_sy, screen_ex, screen_ey, steps=10)
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
 
@@ -365,28 +500,26 @@ virtual_sy = {virtual_sy}
 virtual_ex = {virtual_ex}
 virtual_ey = {virtual_ey}
 duration = {duration}
+screen_sx = {screen_sx}
+screen_sy = {screen_sy}
 
-# 计算屏幕坐标
-screen_sx, screen_sy = win32gui.ClientToScreen(hwnd, (virtual_sx, virtual_sy))
-screen_ex, screen_ey = win32gui.ClientToScreen(hwnd, (virtual_ex, virtual_ey))
-
-# 激活目标窗口
+# 激活目标窗口（已在前台则跳过，避免触发 WM_ACTIVATE 破坏应用临时 UI 状态）
 main_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
-target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
-current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
-ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
+_need_activate = ctypes.windll.user32.GetForegroundWindow() != main_hwnd
 
-# 激活窗口，带异常处理
-try:
-    win32gui.SetForegroundWindow(main_hwnd)
-except Exception:
+if _need_activate:
+    target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
+    current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
     try:
-        win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
-        ctypes.windll.user32.BringWindowToTop(main_hwnd)
+        win32gui.SetForegroundWindow(main_hwnd)
     except Exception:
-        pass
-
-time.sleep(0.3)
+        try:
+            win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+            ctypes.windll.user32.BringWindowToTop(main_hwnd)
+        except Exception:
+            pass
+    time.sleep(0.1)
 
 win32api.SetCursorPos((screen_sx, screen_sy))
 time.sleep(0.1)
@@ -397,20 +530,17 @@ MOUSEEVENTF_LEFTUP = 0x0004
 ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
 time.sleep(0.05)
 
-# 分步移动
-steps = 10
-step_delay = duration / steps
-for i in range(1, steps + 1):
-    progress = i / steps
-    screen_cx = int(screen_sx + (screen_ex - screen_sx) * progress)
-    screen_cy = int(screen_sy + (screen_ey - screen_sy) * progress)
-    win32api.SetCursorPos((screen_cx, screen_cy))
+# 人类化路径移动
+path = {path}
+step_delay = duration / len(path)
+for cx, cy in path:
+    win32api.SetCursorPos((cx, cy))
     time.sleep(step_delay)
 
 ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
 
-# 断开线程绑定
-ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
+if _need_activate:
+    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
 '''
         timeout = max(20, int(duration_ms / 1000) + 15)
         return self._run_subprocess(code, timeout=timeout)
@@ -421,6 +551,7 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
                                       duration_ms: int = 500) -> bool:
         """Delegated 跨窗口拖拽 - 激活源窗口 + midpoint激活目标窗口 + mouse_event"""
         duration = duration_ms / 1000.0
+        path = generate_humanized_path(screen_sx, screen_sy, screen_ex, screen_ey, steps=10)
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
 
@@ -444,21 +575,24 @@ elif not win32gui.IsWindowVisible(target_main_hwnd):
     win32gui.ShowWindow(target_main_hwnd, win32con.SW_SHOW)
     time.sleep(0.1)
 
-# 激活源窗口
+# 激活源窗口（已在前台则跳过）
+_need_activate_source = ctypes.windll.user32.GetForegroundWindow() != source_main_hwnd
 if win32gui.IsIconic(source_main_hwnd):
     win32gui.ShowWindow(source_main_hwnd, win32con.SW_RESTORE)
     time.sleep(0.2)
+    _need_activate_source = True
 source_tid = ctypes.windll.user32.GetWindowThreadProcessId(source_main_hwnd, None)
-ctypes.windll.user32.AttachThreadInput(current_tid, source_tid, True)
-try:
-    win32gui.SetForegroundWindow(source_main_hwnd)
-except Exception:
+if _need_activate_source:
+    ctypes.windll.user32.AttachThreadInput(current_tid, source_tid, True)
     try:
-        win32gui.ShowWindow(source_main_hwnd, win32con.SW_SHOW)
-        ctypes.windll.user32.BringWindowToTop(source_main_hwnd)
+        win32gui.SetForegroundWindow(source_main_hwnd)
     except Exception:
-        pass
-time.sleep(0.3)
+        try:
+            win32gui.ShowWindow(source_main_hwnd, win32con.SW_SHOW)
+            ctypes.windll.user32.BringWindowToTop(source_main_hwnd)
+        except Exception:
+            pass
+    time.sleep(0.1)
 
 win32api.SetCursorPos((screen_sx, screen_sy))
 time.sleep(0.1)
@@ -468,17 +602,15 @@ MOUSEEVENTF_LEFTUP = 0x0004
 ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
 time.sleep(0.05)
 
-# 分步移动到终点
-steps = 10
-step_delay = duration / steps
-mid = steps // 2
-for i in range(1, steps + 1):
-    progress = i / steps
-    cx = int(screen_sx + (screen_ex - screen_sx) * progress)
-    cy = int(screen_sy + (screen_ey - screen_sy) * progress)
+# 人类化路径移动
+path = {path}
+step_delay = duration / len(path)
+mid = len(path) // 2
+
+for idx, (cx, cy) in enumerate(path, 1):
     win32api.SetCursorPos((cx, cy))
     # 在 midpoint 激活目标窗口，使其浮到源窗口之上
-    if i == mid:
+    if idx == mid:
         target_tid = ctypes.windll.user32.GetWindowThreadProcessId(target_main_hwnd, None)
         ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
         try:
@@ -490,7 +622,8 @@ for i in range(1, steps + 1):
 
 ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
 
-ctypes.windll.user32.AttachThreadInput(current_tid, source_tid, False)
+if _need_activate_source:
+    ctypes.windll.user32.AttachThreadInput(current_tid, source_tid, False)
 '''
         timeout = max(20, int(duration_ms / 1000) + 15)
         return self._run_subprocess(code, timeout=timeout)
@@ -507,13 +640,16 @@ delta_x = {delta_x}
 delta_y = {delta_y}
 duration = {duration}
 
-# 激活目标窗口
+# 激活目标窗口（已在前台则跳过，避免触发 WM_ACTIVATE 破坏应用临时 UI 状态）
 main_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
-target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
-current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
-ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
-win32gui.SetForegroundWindow(main_hwnd)
-time.sleep(0.3)
+_need_activate = ctypes.windll.user32.GetForegroundWindow() != main_hwnd
+
+if _need_activate:
+    target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
+    current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
+    win32gui.SetForegroundWindow(main_hwnd)
+    time.sleep(0.1)
 
 # 分步发送相对移动事件
 MOUSEEVENTF_MOVE = 0x0001
@@ -531,8 +667,8 @@ for i in range(steps):
     ctypes.windll.user32.mouse_event(MOUSEEVENTF_MOVE, dx, dy, 0, 0)
     time.sleep(step_delay)
 
-# 不恢复状态，仅断开线程绑定
-ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
+if _need_activate:
+    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
 '''
         timeout = max(15, int(duration_ms / 1000) + 10)
         return self._run_subprocess(code, timeout=timeout)
@@ -550,23 +686,23 @@ delta = {delta}
 # 计算屏幕坐标
 screen_x, screen_y = win32gui.ClientToScreen(hwnd, (virtual_x, virtual_y))
 
-# 激活目标窗口
+# 激活目标窗口（已在前台则跳过，避免触发 WM_ACTIVATE 破坏应用临时 UI 状态）
 main_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
-target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
-current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
-ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
+_need_activate = ctypes.windll.user32.GetForegroundWindow() != main_hwnd
 
-# 激活窗口，带异常处理
-try:
-    win32gui.SetForegroundWindow(main_hwnd)
-except Exception:
+if _need_activate:
+    target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
+    current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
     try:
-        win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
-        ctypes.windll.user32.BringWindowToTop(main_hwnd)
+        win32gui.SetForegroundWindow(main_hwnd)
     except Exception:
-        pass
-
-time.sleep(0.3)
+        try:
+            win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+            ctypes.windll.user32.BringWindowToTop(main_hwnd)
+        except Exception:
+            pass
+    time.sleep(0.1)
 
 win32api.SetCursorPos((screen_x, screen_y))
 time.sleep(0.1)
@@ -575,41 +711,50 @@ time.sleep(0.1)
 MOUSEEVENTF_WHEEL = 0x0800
 ctypes.windll.user32.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, delta, 0)
 
-# 断开线程绑定
-ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
+if _need_activate:
+    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
 '''
         return self._run_subprocess(code, timeout=15)
 
     def _delegated_hover(self, hwnd: int, virtual_x: int, virtual_y: int,
                        duration_ms: int, semi_blocking: bool = False) -> bool:
         """Delegated 悬浮 - 激活窗口 + 移动鼠标停留，不恢复状态"""
+        screen_x, screen_y = self._client_to_screen(hwnd, virtual_x, virtual_y)
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
+{_HUMANIZED_PATH_INLINE}
 
 hwnd = {hwnd}
 virtual_x = {virtual_x}
 virtual_y = {virtual_y}
 duration_ms = {duration_ms}
+screen_x = {screen_x}
+screen_y = {screen_y}
 
-# 计算屏幕坐标
-screen_x, screen_y = win32gui.ClientToScreen(hwnd, (virtual_x, virtual_y))
-
-# 激活目标窗口
+# 激活目标窗口（已在前台则跳过，避免触发 WM_ACTIVATE 破坏应用临时 UI 状态）
 main_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
-target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
-current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
-ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
-win32gui.SetForegroundWindow(main_hwnd)
-time.sleep(0.3)
+_need_activate = ctypes.windll.user32.GetForegroundWindow() != main_hwnd
 
-win32api.SetCursorPos((screen_x, screen_y))
+if _need_activate:
+    target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
+    current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
+    win32gui.SetForegroundWindow(main_hwnd)
+    time.sleep(0.1)
+
+# 人类化移动路径
+cursor = win32api.GetCursorPos()
+path = _gen_path(cursor[0], cursor[1], screen_x, screen_y, 10)
+for cx, cy in path:
+    win32api.SetCursorPos((cx, cy))
+    time.sleep(0.008)
 
 # 停留指定时长
 if duration_ms > 0:
     time.sleep(duration_ms / 1000.0)
 
-# 不恢复状态，仅断开线程绑定
-ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
+if _need_activate:
+    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
 '''
         timeout = max(5, duration_ms / 1000 + 5) if duration_ms > 0 else 5
         return self._run_subprocess(code, timeout=int(timeout), semi_blocking=semi_blocking)
@@ -621,11 +766,14 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
 
         click_code = ''
         if has_coord:
+            screen_x, screen_y = self._client_to_screen(hwnd, virtual_x, virtual_y)
             click_code = f'''
-# 点击目标位置
-screen_x, screen_y = win32gui.ClientToScreen(hwnd, ({virtual_x}, {virtual_y}))
-win32api.SetCursorPos((screen_x, screen_y))
-time.sleep(0.3)
+# 人类化移动到目标位置并点击
+cursor = win32api.GetCursorPos()
+path = _gen_path(cursor[0], cursor[1], {screen_x}, {screen_y}, 10)
+for cx, cy in path:
+    win32api.SetCursorPos((cx, cy))
+    time.sleep(0.008)
 lParam = win32api.MAKELONG({virtual_x}, {virtual_y})
 win32gui.SendMessage(hwnd, win32con.WM_LBUTTONDOWN, 0x0001, lParam)
 time.sleep(0.05)
@@ -636,17 +784,21 @@ time.sleep(0.2)
         code = f'''
 import win32gui, win32api, win32con, ctypes, time, base64
 import pyperclip
+{_HUMANIZED_PATH_INLINE}
 
 hwnd = {hwnd}
 text = base64.b64decode("{text_b64}").decode("utf-8")
 
-# 激活目标窗口
+# 激活目标窗口（已在前台则跳过，避免触发 WM_ACTIVATE 破坏应用临时 UI 状态）
 main_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
-target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
-current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
-ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
-win32gui.SetForegroundWindow(main_hwnd)
-time.sleep(0.3)
+_need_activate = ctypes.windll.user32.GetForegroundWindow() != main_hwnd
+
+if _need_activate:
+    target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
+    current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
+    win32gui.SetForegroundWindow(main_hwnd)
+    time.sleep(0.1)
 
 {click_code}
 
@@ -667,8 +819,8 @@ time.sleep(0.05)
 ctypes.windll.user32.keybd_event(VK_CONTROL, scan_ctrl, 2, 0)
 time.sleep(0.1)
 
-# 不恢复状态，仅断开线程绑定
-ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
+if _need_activate:
+    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
 '''
         return self._run_subprocess(code, timeout=30)
 
@@ -700,11 +852,14 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
 
         click_code = ''
         if virtual_x is not None and virtual_y is not None:
+            screen_x, screen_y = self._client_to_screen(hwnd, virtual_x, virtual_y)
             click_code = f'''
-# 点击目标位置
-screen_x, screen_y = win32gui.ClientToScreen(hwnd, ({virtual_x}, {virtual_y}))
-win32api.SetCursorPos((screen_x, screen_y))
-time.sleep(0.3)
+# 人类化移动到目标位置并点击
+cursor = win32api.GetCursorPos()
+path = _gen_path(cursor[0], cursor[1], {screen_x}, {screen_y}, 10)
+for cx, cy in path:
+    win32api.SetCursorPos((cx, cy))
+    time.sleep(0.008)
 MOUSEEVENTF_LEFTDOWN = 0x0002
 MOUSEEVENTF_LEFTUP = 0x0004
 ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
@@ -715,26 +870,27 @@ time.sleep(0.1)
 
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
+{_HUMANIZED_PATH_INLINE}
 
 hwnd = {hwnd}
 
-# 激活目标窗口
+# 激活目标窗口（已在前台则跳过，避免触发 WM_ACTIVATE 破坏应用临时 UI 状态）
 main_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
-target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
-current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
-ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
+_need_activate = ctypes.windll.user32.GetForegroundWindow() != main_hwnd
 
-# 激活窗口，带异常处理
-try:
-    win32gui.SetForegroundWindow(main_hwnd)
-except Exception:
+if _need_activate:
+    target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
+    current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
     try:
-        win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
-        ctypes.windll.user32.BringWindowToTop(main_hwnd)
+        win32gui.SetForegroundWindow(main_hwnd)
     except Exception:
-        pass
-
-time.sleep(0.3)
+        try:
+            win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+            ctypes.windll.user32.BringWindowToTop(main_hwnd)
+        except Exception:
+            pass
+    time.sleep(0.1)
 
 {click_code}
 
@@ -746,8 +902,8 @@ time.sleep(0.05)
 {all_release}
 time.sleep(0.05)
 
-# 断开线程绑定
-ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
+if _need_activate:
+    ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, False)
 '''
         timeout = max(15, duration_ms / 1000 + 15) if duration_ms > 0 else 15
         return self._run_subprocess(code, timeout=int(timeout), non_blocking=non_blocking)
@@ -1288,37 +1444,48 @@ time.sleep(0.05)
 
     def _hijack_click(self, hwnd: int, virtual_x: int, virtual_y: int,
                       restore_state: bool = True) -> bool:
-        """Hijack 点击 - 接收 virtual 坐标（API层已处理最小化恢复）"""
+        """Hijack 点击 - mouse_event 硬件级点击"""
+        screen_x, screen_y = self._client_to_screen(hwnd, virtual_x, virtual_y)
+        main_hwnd = win32gui.GetParent(hwnd) or hwnd
         restore_code = self._build_restore_code(restore_state)
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
+{_HUMANIZED_PATH_INLINE}
 
 old_fg = win32gui.GetForegroundWindow()
 old_pos = win32api.GetCursorPos()
 
-hwnd = {hwnd}
-virtual_x = {virtual_x}
-virtual_y = {virtual_y}
+main_hwnd = {main_hwnd}
+screen_x = {screen_x}
+screen_y = {screen_y}
 
-# API 层已经处理了最小化恢复，直接计算屏幕坐标
-screen_x, screen_y = win32gui.ClientToScreen(hwnd, (virtual_x, virtual_y))
+# 仅在窗口最小化或隐藏时才恢复
+if win32gui.IsIconic(main_hwnd):
+    win32gui.ShowWindow(main_hwnd, win32con.SW_RESTORE)
+    time.sleep(0.2)
+elif not win32gui.IsWindowVisible(main_hwnd):
+    win32gui.ShowWindow(main_hwnd, win32con.SW_SHOW)
+    time.sleep(0.1)
 
-# Hijack 模式：设置焦点并点击
-main_hwnd = ctypes.windll.user32.GetAncestor(hwnd, 2) or hwnd
 target_tid = ctypes.windll.user32.GetWindowThreadProcessId(main_hwnd, None)
 current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
 ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
 win32gui.SetForegroundWindow(main_hwnd)
-time.sleep(0.3)
+time.sleep(0.1)
 
-win32api.SetCursorPos((screen_x, screen_y))
-time.sleep(0.3)
+# 人类化移动路径
+cursor = win32api.GetCursorPos()
+path = _gen_path(cursor[0], cursor[1], screen_x, screen_y, 10)
+for cx, cy in path:
+    win32api.SetCursorPos((cx, cy))
+    time.sleep(0.008)
 
-# 用 SendMessage 点击（virtual_x, virtual_y 是客户区坐标）
-lParam = win32api.MAKELONG(virtual_x, virtual_y)
-win32gui.SendMessage(hwnd, win32con.WM_LBUTTONDOWN, 0x0001, lParam)
+# mouse_event 硬件级点击
+MOUSEEVENTF_LEFTDOWN = 0x0002
+MOUSEEVENTF_LEFTUP = 0x0004
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
 time.sleep(0.05)
-win32gui.SendMessage(hwnd, win32con.WM_LBUTTONUP, 0, lParam)
+ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
 
 {restore_code}
 '''
@@ -1331,6 +1498,7 @@ win32gui.SendMessage(hwnd, win32con.WM_LBUTTONUP, 0, lParam)
         restore_code = self._build_restore_code(restore_state)
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
+{_HUMANIZED_PATH_INLINE}
 
 old_fg = win32gui.GetForegroundWindow()
 old_pos = win32api.GetCursorPos()
@@ -1354,7 +1522,13 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
 win32gui.SetForegroundWindow(main_hwnd)
 time.sleep(0.1)
 
-win32api.SetCursorPos((screen_x, screen_y))
+# 人类化移动路径
+cursor = win32api.GetCursorPos()
+path = _gen_path(cursor[0], cursor[1], screen_x, screen_y, 10)
+for cx, cy in path:
+    win32api.SetCursorPos((cx, cy))
+    time.sleep(0.008)
+
 MOUSEEVENTF_RIGHTDOWN = 0x0008
 MOUSEEVENTF_RIGHTUP = 0x0010
 ctypes.windll.user32.mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0)
@@ -1372,6 +1546,7 @@ ctypes.windll.user32.mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0)
         restore_code = self._build_restore_code(restore_state)
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
+{_HUMANIZED_PATH_INLINE}
 
 old_fg = win32gui.GetForegroundWindow()
 old_pos = win32api.GetCursorPos()
@@ -1396,7 +1571,13 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
 win32gui.SetForegroundWindow(main_hwnd)
 time.sleep(0.1)
 
-win32api.SetCursorPos((screen_x, screen_y))
+# 人类化移动路径
+cursor = win32api.GetCursorPos()
+path = _gen_path(cursor[0], cursor[1], screen_x, screen_y, 10)
+for cx, cy in path:
+    win32api.SetCursorPos((cx, cy))
+    time.sleep(0.008)
+
 MOUSEEVENTF_LEFTDOWN = 0x0002
 MOUSEEVENTF_LEFTUP = 0x0004
 ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
@@ -1409,9 +1590,10 @@ ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
 
     def _hijack_swipe(self, hwnd: int, sx: int, sy: int, ex: int, ey: int,
                       restore_state: bool = True) -> bool:
-        """Hijack 滑动 - 10步插值 + win32api（支持多屏）"""
+        """Hijack 滑动 - 人类化路径 + win32api（支持多屏）"""
         main_hwnd = win32gui.GetParent(hwnd) or hwnd
         restore_code = self._build_restore_code(restore_state)
+        path = generate_humanized_path(sx, sy, ex, ey, steps=10)
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
 
@@ -1421,8 +1603,6 @@ old_pos = win32api.GetCursorPos()
 main_hwnd = {main_hwnd}
 sx = {sx}
 sy = {sy}
-ex = {ex}
-ey = {ey}
 
 # 仅在窗口最小化或隐藏时才恢复
 if win32gui.IsIconic(main_hwnd):
@@ -1438,28 +1618,22 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
 win32gui.SetForegroundWindow(main_hwnd)
 time.sleep(0.1)
 
-# 用 win32api 模拟拖拽
+# 按下左键
 win32api.SetCursorPos((sx, sy))
 MOUSEEVENTF_LEFTDOWN = 0x0002
-MOUSEEVENTF_LEFTUP = 0x0004
-
-# 按下左键
 ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
 time.sleep(0.05)
 
-# 分步移动到终点
-steps = 10
+# 人类化路径移动
+path = {path}
 duration = 0.3
-step_delay = duration / steps
-
-for i in range(1, steps + 1):
-    progress = i / steps
-    cx = int(sx + (ex - sx) * progress)
-    cy = int(sy + (ey - sy) * progress)
+step_delay = duration / len(path)
+for cx, cy in path:
     win32api.SetCursorPos((cx, cy))
     time.sleep(step_delay)
 
 # 释放左键
+MOUSEEVENTF_LEFTUP = 0x0004
 ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
 
 {restore_code}
@@ -1469,15 +1643,16 @@ ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
     def _hijack_drag(self, hwnd: int, sx: int, sy: int, ex: int, ey: int,
                      duration_ms: int = 500, restore_state: bool = True,
                      target_hwnd: int = None) -> bool:
-        """Hijack 拖拽 - 10步插值 + duration_ms 参数化 + win32api（支持多屏）"""
+        """Hijack 拖拽 - 人类化路径 + duration_ms 参数化 + win32api（支持多屏）"""
         main_hwnd = win32gui.GetParent(hwnd) or hwnd
         duration = duration_ms / 1000.0
         restore_code = self._build_restore_code(restore_state)
 
-        # 跨窗口拖拽：预计算目标主窗口
         target_main_hwnd = "None"
         if target_hwnd:
             target_main_hwnd = f"ctypes.windll.user32.GetAncestor({target_hwnd}, 2) or {target_hwnd}"
+
+        path = generate_humanized_path(sx, sy, ex, ey, steps=10)
 
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
@@ -1488,8 +1663,6 @@ old_pos = win32api.GetCursorPos()
 main_hwnd = {main_hwnd}
 sx = {sx}
 sy = {sy}
-ex = {ex}
-ey = {ey}
 duration = {duration}
 target_main_hwnd = {target_main_hwnd}
 
@@ -1516,27 +1689,22 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
 win32gui.SetForegroundWindow(main_hwnd)
 time.sleep(0.1)
 
-# 用 win32api 模拟拖拽
+# 按下左键
 win32api.SetCursorPos((sx, sy))
 MOUSEEVENTF_LEFTDOWN = 0x0002
 MOUSEEVENTF_LEFTUP = 0x0004
-
-# 按下左键
 ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
 time.sleep(0.05)
 
-# 分步移动到终点
-steps = 10
-step_delay = duration / steps
-mid = steps // 2
+# 人类化路径移动
+path = {path}
+step_delay = duration / len(path)
+mid = len(path) // 2
 
-for i in range(1, steps + 1):
-    progress = i / steps
-    cx = int(sx + (ex - sx) * progress)
-    cy = int(sy + (ey - sy) * progress)
+for idx, (cx, cy) in enumerate(path, 1):
     win32api.SetCursorPos((cx, cy))
     # 跨窗口拖拽：在 midpoint 激活目标窗口，使其浮到源窗口之上
-    if target_main_hwnd and i == mid:
+    if target_main_hwnd and idx == mid:
         target_tid2 = ctypes.windll.user32.GetWindowThreadProcessId(target_main_hwnd, None)
         ctypes.windll.user32.AttachThreadInput(current_tid, target_tid2, True)
         win32gui.SetForegroundWindow(target_main_hwnd)
@@ -1646,11 +1814,12 @@ ctypes.windll.user32.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, wheel_delta, 0)
 
     def _hijack_hover(self, hwnd: int, screen_x: int, screen_y: int, duration_ms: int,
                      semi_blocking: bool = False, restore_state: bool = True) -> bool:
-        """Hijack 鼠标悬浮 - SetCursorPos + sleep(duration_ms) + 恢复"""
+        """Hijack 鼠标悬浮 - 人类化路径移动 + sleep(duration_ms) + 恢复"""
         main_hwnd = win32gui.GetParent(hwnd) or hwnd
         restore_code = self._build_restore_code(restore_state)
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
+{_HUMANIZED_PATH_INLINE}
 
 old_fg = win32gui.GetForegroundWindow()
 old_pos = win32api.GetCursorPos()
@@ -1675,8 +1844,12 @@ ctypes.windll.user32.AttachThreadInput(current_tid, target_tid, True)
 win32gui.SetForegroundWindow(main_hwnd)
 time.sleep(0.1)
 
-# 用 win32api 移动鼠标到目标位置
-win32api.SetCursorPos((screen_x, screen_y))
+# 人类化移动路径
+cursor = win32api.GetCursorPos()
+path = _gen_path(cursor[0], cursor[1], screen_x, screen_y, 10)
+for cx, cy in path:
+    win32api.SetCursorPos((cx, cy))
+    time.sleep(0.008)
 
 # 停留指定时长
 if duration_ms > 0:
@@ -1697,12 +1870,12 @@ if duration_ms > 0:
         text_b64 = base64.b64encode(text.encode('utf-8')).decode('ascii')
         restore_code = self._build_restore_code(restore_state)
 
-        # 判断是否有坐标
         has_coord = screen_x is not None and screen_y is not None
 
         code = f'''
 import win32gui, win32api, win32con, ctypes, time, base64
 import pyperclip
+{_HUMANIZED_PATH_INLINE}
 
 text = base64.b64decode("{text_b64}").decode("utf-8")
 
@@ -1729,7 +1902,12 @@ win32gui.SetForegroundWindow(main_hwnd)
 time.sleep(0.1)
 
 if has_coord:
-    win32api.SetCursorPos((screen_x, screen_y))
+    # 人类化移动路径
+    cursor = win32api.GetCursorPos()
+    path = _gen_path(cursor[0], cursor[1], screen_x, screen_y, 10)
+    for cx, cy in path:
+        win32api.SetCursorPos((cx, cy))
+        time.sleep(0.008)
     MOUSEEVENTF_LEFTDOWN = 0x0002
     MOUSEEVENTF_LEFTUP = 0x0004
     ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
@@ -1788,13 +1966,17 @@ time.sleep(0.1)
         all_press = '\n'.join(press_lines)
         all_release = '\n'.join(release_lines)
 
-        # 可选的先点击代码
+        # 可选的先点击代码（人类化路径）
         click_code = ''
         if virtual_x is not None and virtual_y is not None:
             screen_x, screen_y = self._client_to_screen(hwnd, virtual_x, virtual_y)
             click_code = f'''
-# 用 win32api 点击目标位置
-win32api.SetCursorPos(({screen_x}, {screen_y}))
+# 人类化移动到目标位置并点击
+cursor = win32api.GetCursorPos()
+path = _gen_path(cursor[0], cursor[1], {screen_x}, {screen_y}, 10)
+for cx, cy in path:
+    win32api.SetCursorPos((cx, cy))
+    time.sleep(0.008)
 MOUSEEVENTF_LEFTDOWN = 0x0002
 MOUSEEVENTF_LEFTUP = 0x0004
 ctypes.windll.user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
@@ -1807,6 +1989,7 @@ time.sleep(0.1)
 
         code = f'''
 import win32gui, win32api, win32con, ctypes, time
+{_HUMANIZED_PATH_INLINE}
 
 hwnd = {hwnd}
 main_hwnd = {main_hwnd}
@@ -1862,15 +2045,47 @@ time.sleep(0.05)
 
             非阻塞模式下返回 True 仅表示"消息已投递"，不代表目标窗口已完成操作。
             _last_error 捕获的是子进程自身的启动/执行错误，不是目标窗口的响应。
+
+        嵌入式 Python 配置:
+            - python313._pth 文件控制模块搜索路径（包含 pyperclip）
+            - PATH 环境变量确保 DLL 可被找到（pywintypes313.dll, pythoncom313.dll）
+            - PYTHONIOENCODING 避免编码问题
         """
         self._last_error = None
         is_frozen = getattr(sys, 'frozen', False)
 
         if is_frozen:
             import os
-            python_exe = os.path.join(sys._MEIPASS, 'embed_python', 'python.exe')
+            embed_python_dir = os.path.join(sys._MEIPASS, 'embed_python')
+            python_exe = os.path.join(embed_python_dir, 'python.exe')
+
+            # 环境变量配置
             env = os.environ.copy()
-            env['PYTHONPATH'] = os.path.join(sys._MEIPASS, 'embed_python')
+
+            # PATH: 添加 embed_python 目录，确保 DLL 能被找到
+            # 注意：._pth 文件不影响 PATH，这个设置仍然有效
+            env['PATH'] = embed_python_dir + os.pathsep + env.get('PATH', '')
+
+            # PYTHONIOENCODING: 避免编码问题
+            env['PYTHONIOENCODING'] = 'utf-8'
+
+            # 注意：不设置 PYTHONPATH，因为 ._pth 文件会覆盖它
+            # 模块搜索路径由 python313._pth 文件控制（已包含 pyperclip）
+
+            # 调试日志：仅在首次执行时输出（同时输出到控制台和文件）
+            if not hasattr(self, '_debug_logged'):
+                debug_info = [
+                    f"Subprocess Config:",
+                    f"  is_frozen=True",
+                    f"  _MEIPASS={sys._MEIPASS}",
+                    f"  python_exe={python_exe}",
+                    f"  embed_python_dir={embed_python_dir}",
+                    f"  PATH={env['PATH'][:200]}..."
+                ]
+                for line in debug_info:
+                    print(f"[DEBUG] {line}")
+                    _write_debug_log(f"[DEBUG] {line}")
+                self._debug_logged = True
         else:
             python_exe = sys.executable
             env = None
@@ -1887,12 +2102,22 @@ time.sleep(0.05)
                 if semi_blocking:
                     time.sleep(0.2)
                     if proc.poll() is not None:
-                        self._last_error = (proc.stderr.read() or b"").decode("utf-8", errors="replace").strip()
+                        stderr_output = (proc.stderr.read() or b"").decode("utf-8", errors="replace").strip()
+                        if stderr_output:
+                            error_msg = f"[ERROR] Subprocess failed (semi_blocking): {stderr_output}"
+                            print(error_msg)
+                            _write_debug_log(error_msg)
+                        self._last_error = stderr_output
                         return False
                 else:
                     time.sleep(0.01)
                     if proc.poll() is not None:
-                        self._last_error = (proc.stderr.read() or b"").decode("utf-8", errors="replace").strip()
+                        stderr_output = (proc.stderr.read() or b"").decode("utf-8", errors="replace").strip()
+                        if stderr_output:
+                            error_msg = f"[ERROR] Subprocess failed (non_blocking): {stderr_output}"
+                            print(error_msg)
+                            _write_debug_log(error_msg)
+                        self._last_error = stderr_output
                         return False
                 return True
             else:
@@ -1903,9 +2128,22 @@ time.sleep(0.05)
                     env=env
                 )
                 if result.returncode != 0:
-                    self._last_error = result.stderr.strip() if result.stderr else None
+                    stderr_output = result.stderr.strip() if result.stderr else ""
+                    stdout_output = result.stdout.strip() if result.stdout else ""
+                    if stderr_output or stdout_output:
+                        error_msg = f"[ERROR] Subprocess failed (code={result.returncode})"
+                        if stderr_output:
+                            error_msg += f" stderr: {stderr_output}"
+                        if stdout_output:
+                            error_msg += f" stdout: {stdout_output}"
+                        print(error_msg)
+                        _write_debug_log(error_msg)
+                    self._last_error = stderr_output
                 return result.returncode == 0
         except Exception as e:
+            error_msg = f"[ERROR] Subprocess exception: {str(e)}"
+            print(error_msg)
+            _write_debug_log(error_msg)
             self._last_error = str(e)
             return False
 

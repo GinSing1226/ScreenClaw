@@ -1,48 +1,33 @@
 ---
 name: click
-description: 单击指定坐标，触发按钮、进入页面、激活控件。适用：触发按钮功能、进入页面/链接、激活控件（输入框、选项）。不适用：需要输入文本（用input_text，自带点击后输入）、需要长按（用long_press）、需要滑动/滚动（用swipe/scroll）。
+description: 单击指定坐标，触发按钮、进入页面、激活控件。不适用：需要输入文本用 input_text，需要长按用 long_press，需要滑动或滚动用 swipe/scroll。
 ---
 
 # click - 点击
 
-## 请求
+## 快速决策
 
-**方法**：POST `/api/click`
+- 坐标必须先通过截图读取并尽量 marker 反验。
+- 输入框输入文本优先用 `input_text x=... y=... text=...`，不要先 click 再 input_text。
+- API 成功后必须截图验证界面是否变化。
 
-**请求头**：
+## 脚本调用
+
+```bash
+python scripts/screenclaw.py click api_url={api_url} token={token} ai_app_type={ai_app_type} session_id={session_id} window_id={window_id} main_window_id={main_window_id} x=50 y=35 action_method=background
 ```
-Authorization: Bearer {token}
-Content-Type: application/json
-```
 
-### 请求参数
+## 请求参数
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `ai_app_type` | string | 是 | - | AI应用类型 |
-| `session_id` | string | 是 | - | 会话唯一标识 |
-| `window_id` | int | 是 | - | 目标窗口句柄 |
-| `main_window_id` | int | 是 | - | 主窗口ID（用于激活最小化窗口） |
-| `x` | float | 是 | - | 横坐标 |
-| `y` | float | 是 | - | 纵坐标 |
-| `action_method` | string | 否 | "background" | 操作方式：background/hijack |
-
-### 请求示例
-
-```json
-{
-  "ai_app_type": "claude_code",
-  "session_id": "session-123",
-  "window_id": 1001,
-  "main_window_id": 1001,
-  "x": 50.0,
-  "y": 30.0,
-  "action_method": "background"
-}
-```
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `window_id` | int | 是 | 目标窗口句柄 |
+| `main_window_id` | int | 是 | 主窗口 ID |
+| `x` | float | 是 | 横坐标百分比 |
+| `y` | float | 是 | 纵坐标百分比 |
+| `action_method` | string | 否 | `background` 优先；必要时 `hijack` |
 
 ## 常见问题
 
-### 遇到问题时的排查顺序
-1. **API成功但无效果** → 按照 skill.md 步骤10 的验证策略，换坐标、换窗口、调参数重试
-2. **API调用失败** → 对照请求参数检查参数格式
+1. **API 成功但无效果**：截图验证坐标、窗口 ID、目标控件状态。
+2. **background 无效**：先确认窗口和坐标，最后再切 `hijack`。

@@ -1,53 +1,40 @@
 ---
 name: hover
-description: 鼠标悬浮到指定坐标并停留，触发悬停效果。适用：触发tooltip/提示框、显示隐藏的UI元素（如滚动条），hover后立即截图捕获隐藏UI。不适用：需要点击（用click）、需要输入文本（用input_text）。
+description: 鼠标悬浮到指定坐标并停留，触发 tooltip、滚动条、隐藏按钮等悬停 UI。不适用：点击用 click，输入用 input_text。
 ---
 
 # hover - 鼠标悬浮
 
-## 请求
+## 快速决策
 
-**方法**：POST `/api/hover`
+- hover 后 UI 可能需要短暂等待才出现。
+- hover 的持续时间不等于 batch 阻塞等待；需要观察隐藏 UI 时，在 batch 中加 `wait` 和 `screenshot`。
+- hover 后必须截图验证隐藏内容是否出现。
 
-**请求头**：
+## 脚本调用
+
+单步 hover：
+
+```bash
+python scripts/screenclaw.py hover api_url={api_url} token={token} ai_app_type={ai_app_type} session_id={session_id} window_id={window_id} main_window_id={main_window_id} x=50 y=30 duration_ms=500 action_method=background
 ```
-Authorization: Bearer {token}
-Content-Type: application/json
+
+hover 后截图：
+
+```bash
+python scripts/screenclaw.py batch api_url={api_url} token={token} ai_app_type={ai_app_type} session_id={session_id} window_id={window_id} main_window_id={main_window_id} step.0.action=hover step.0.params.x=50 step.0.params.y=30 step.1.action=wait step.1.params.duration_ms=300 step.2.action=screenshot step.2.params.coordinate_type=no
 ```
 
-### 请求参数
+## 请求参数
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `ai_app_type` | string | 是 | - | AI应用类型 |
-| `session_id` | string | 是 | - | 会话唯一标识 |
-| `window_id` | int | 是 | - | 目标窗口句柄 |
-| `main_window_id` | int | 是 | - | 主窗口ID |
-| `x` | float | 是 | - | 横坐标 |
-| `y` | float | 是 | - | 纵坐标 |
-| `duration_ms` | int | 否 | 500 | 停留时长（毫秒） |
-| `action_method` | string | 否 | "background" | 操作方式：background/hijack |
-
-### 请求示例
-
-```json
-{
-  "ai_app_type": "claude_code",
-  "session_id": "session-123",
-  "window_id": 1001,
-  "main_window_id": 1001,
-  "x": 50.0,
-  "y": 30.0,
-  "action_method": "background"
-}
-```
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `x` | float | 是 | 横坐标百分比 |
+| `y` | float | 是 | 纵坐标百分比 |
+| `duration_ms` | int | 否 | 停留时长，默认 500 |
+| `action_method` | string | 否 | `background` 或 `hijack` |
 
 ## 常见问题
 
-### 遇到问题时的排查顺序
-1. **API成功但tooltip没出来** → 按照 skill.md 步骤10 验证，换坐标重试
-2. **API调用失败** → 对照请求参数检查参数格式
-
-### 操作技巧
-- **组合hover+截图**：在batch中使用 hover + wait + screenshot，一次性捕获隐藏UI
-- **配合wait**：hover后添加短暂wait，确保UI元素完全显示后再截图。batch里的hover是半阻塞的，hover启动后，会立刻执行后续指令。所以必须用wait指令等待隐藏UI出现。不能依赖hover自身的duration
+1. **tooltip 没出来**：换坐标，或在 batch 中增加 wait。
+2. **截图时隐藏 UI 消失**：把 hover、wait、screenshot 放进同一个 batch。

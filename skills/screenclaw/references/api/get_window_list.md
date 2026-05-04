@@ -1,65 +1,53 @@
 ---
 name: get_window_list
-description: 获取系统可见窗口列表，找到目标窗口的window_id。适用：需要操作某个窗口但不知道window_id、查找特定应用的窗口、区分主窗口和子窗口。不适用：已知window_id，无需查找。
+description: 获取系统可见窗口列表，找到目标窗口的 window_id。适用：不知道窗口 ID、需要区分主窗口和子窗口、操作失败后怀疑窗口选错。
 ---
 
 # get_window_list - 获取窗口列表
 
-## 请求
+## 快速决策
 
-**方法**：POST `/api/get_window_list`
+- 新任务开始时调用。
+- 操作失败且截图不像目标窗口时重新调用。
+- 找不到窗口时先换 keyword，再不传 keyword 获取更多候选。
+- `get_window_list` 不需要 `window_id` 和 `main_window_id`。
 
-**请求头**：
+## 脚本调用
+
+按关键词查找：
+
+```bash
+python scripts/screenclaw.py get_window_list api_url={api_url} token={token} ai_app_type={ai_app_type} session_id={session_id} keyword=notepad include_children=true children_filter=titled
 ```
-Authorization: Bearer {token}
-Content-Type: application/json
+
+获取更多子窗口：
+
+```bash
+python scripts/screenclaw.py get_window_list api_url={api_url} token={token} ai_app_type={ai_app_type} session_id={session_id} keyword=微信 include_children=true children_filter=all
 ```
 
-### 请求参数
+## 请求参数
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `ai_app_type` | string | 是 | - | AI应用类型 |
-| `session_id` | string | 是 | - | 会话唯一标识 |
-| `keyword` | string | 否 | "" | 模糊搜索窗口标题或进程名 |
-| `include_children` | bool | 强烈建议true | false | 是否返回子窗口 |
-| `children_filter` | string | 否 | "titled" | 子窗口过滤：all/titled（titled=仅返回有标题的子窗口，减少约70%数据量） |
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `ai_app_type` | string | 是 | AI 应用类型 |
+| `session_id` | string | 是 | 会话唯一标识 |
+| `keyword` | string | 否 | 模糊搜索窗口标题或进程名 |
+| `include_children` | bool | 建议 true | 是否返回子窗口 |
+| `children_filter` | string | 否 | `titled` 仅有标题子窗口；`all` 全部子窗口 |
 
-**注意**：`get_window_list` 不需要 `main_window_id` 参数。
-
-### 响应字段
+## 响应字段
 
 | 字段 | 说明 |
 |------|------|
-| `window_id` | 窗口句柄，后续操作的唯一标识 |
-| `process_id` | 进程ID |
-| `process_name` | 进程名称（.exe） |
+| `window_id` | 窗口句柄，后续操作唯一标识 |
+| `process_id` | 进程 ID |
+| `process_name` | 进程名称 |
 | `window_title` | 窗口标题 |
-| `child_windows` | 子窗口列表（仅 include_children=true 时返回） |
-
-### 请求示例
-
-```json
-{
-  "ai_app_type": "claude_code",
-  "session_id": "session-123",
-  "keyword": "notepad",
-  "include_children": true,
-  "children_filter": "titled"
-}
-```
+| `child_windows` | 子窗口列表 |
 
 ## 常见问题
 
-### 遇到问题时的排查顺序
-1. **找不到目标窗口** → 调整keyword、检查窗口是否可见
-2. **API调用失败** → 对照请求参数检查参数格式
-
-### 操作技巧
-- **keyword**：使用应用名称或进程名模糊搜索，中英文都可以试试。找不到就不要传关键词
-- **children_filter="titled"**：只返回有标题的子窗口，减少数据量，推荐使用
-- **窗口选择流程**（新进程或更换进程时）：
-  1. 对主窗口和所有子窗口截图
-  2. 识别哪些窗口可能包含目标元素
-  3. 建立候选窗口名单，按可能性排序
-  4. 后续操作失败时，按名单依次切换
+1. **找不到目标窗口**：尝试中英文关键词、进程名，或不传 keyword。
+2. **窗口太多**：先用 `children_filter=titled`，需要细查时再用 `all`。
+3. **操作无效**：对主窗口和候选子窗口截图，建立候选窗口名单后逐个验证。

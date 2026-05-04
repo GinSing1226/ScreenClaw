@@ -236,7 +236,7 @@ async def delegated_control(request: DelegatedRequest, req: FastAPIRequest = Non
         if config_service.is_delegated_active():
             return BaseResponse(
                 success=True,
-                message="Delegated mode activated",
+                message="Delegated mode activated.",
                 data={"delegated_active": True}
             )
 
@@ -276,14 +276,14 @@ async def delegated_control(request: DelegatedRequest, req: FastAPIRequest = Non
             ai_app_type="", session_id="", window_id=0,
             process_name="", instruction="delegated_enter",
             params={"action": "enter"},
-            result={"success": True, "message": "托管模式已激活"},
+            result={"success": True, "message": "Delegated mode activated."},
             duration_ms=duration_ms,
             client_ip=client_ip
         )
 
         return BaseResponse(
             success=True,
-            message="托管模式已激活",
+            message="Delegated mode activated.",
             data={"delegated_active": True}
         )
 
@@ -298,14 +298,14 @@ async def delegated_control(request: DelegatedRequest, req: FastAPIRequest = Non
             ai_app_type="", session_id="", window_id=0,
             process_name="", instruction="delegated_exit",
             params={"action": "exit"},
-            result={"success": True, "message": "托管模式已退出"},
+            result={"success": True, "message": "Delegated mode exited."},
             duration_ms=duration_ms,
             client_ip=client_ip
         )
 
         return BaseResponse(
             success=True,
-            message="Delegated mode exited",
+            message="Delegated mode exited.",
             data={"delegated_active": False}
         )
 

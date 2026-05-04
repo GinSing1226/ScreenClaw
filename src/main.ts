@@ -76,6 +76,8 @@ const i18n = createI18n({
           numberSize: '数字大小',
           numberColor: '数字颜色',
           numberOpacity: '数字透明度',
+          numberStrokeWidth: '数字描边宽度',
+          numberStrokeColor: '数字描边颜色',
           imageQuality: '图片质量',
           maxImageWidth: '最大图片宽度',
           markerTitle: '坐标标记点',
@@ -99,6 +101,15 @@ const i18n = createI18n({
           targetOverlapMax: '目标重叠上限',
           stopThreshold: '停止阈值',
           scrollImageQuality: '图片质量'
+        },
+        selfCheck: {
+          title: '轮数自检',
+          enabled: '启用自检',
+          interval: '自检轮数',
+          minChars: '最低字符数',
+          docPath: '自检文档路径',
+          keywords: '自检关键词',
+          keywordsHint: '每行 OR，行内逗号 AND'
         },
         security: {
           title: '安全设置',
@@ -130,6 +141,8 @@ const i18n = createI18n({
           numberSize: '坐标数字的字体大小（像素）',
           numberOpacity: '坐标数字的不透明度，0%=完全透明，100%=完全不透明',
           numberColor: '坐标数字的显示颜色',
+          numberStrokeWidth: '坐标数字描边宽度。0 表示关闭描边，1 表示轻描边',
+          numberStrokeColor: '坐标数字描边颜色，用于提高复杂背景上的可读性',
           imageQuality: 'JPEG 压缩质量（1-100），值越高图片越清晰但文件越大',
           maxImageWidth: '截图缩放的最大宽度，超过会等比缩放以节省传输带宽',
           markerRingRadius: '坐标标记点外圈圆环的半径（像素）。值越大标记越醒目，但可能遮挡附近内容',
@@ -148,6 +161,11 @@ const i18n = createI18n({
           targetOverlapMax: '目标重叠上限（0.2-0.6）。相邻图片重叠量的理想范围上限。值越小减少截图数量，但重叠太少可能拼接失败',
           stopThreshold: '停止阈值（1~0.0001，即 100%~0.01%）。内容变化率低于此值时停止滚动，表示已到底部。值越大越容易判定到底，可能提前停止',
           scrollImageQuality: '输出图片质量（1-100）。值越大图片越清晰，但文件越大。建议 85-95',
+          selfCheckEnabled: '达到自检轮数后，下一次截图必须提交 self_check 内容',
+          selfCheckInterval: '每成功截图多少次后触发自检。batch 内多个截图只计 1 次',
+          selfCheckMinChars: 'self_check 内容去除空白后的最低字符数',
+          selfCheckDocPath: 'API 要求 AI 阅读的自检文档路径',
+          selfCheckKeywords: '关键词规则：每行是一组可选规则，行内关键词必须全部出现',
           autoConfirmProcesses: '列表中的进程执行键盘/鼠标操作时，自动批准无需弹窗确认。部分应用（如 UWP 应用、微软商店应用）因系统限制无法获取进程名，此类应用无法加入自动同意列表',
           blockedProcesses: '列表中的进程禁止执行任何键盘/鼠标操作'
         },
@@ -170,7 +188,9 @@ const i18n = createI18n({
         copy: '复制',
         lineByLine: '每行一个',
         refresh: '刷新',
-        loading: '获取中...'
+        loading: '获取中...',
+        enabled: '已启用',
+        disabled: '已关闭'
       },
       aiIntegrate: {
         button: 'AI自动集成',
@@ -284,6 +304,8 @@ const i18n = createI18n({
           numberSize: 'Number Size',
           numberColor: 'Number Color',
           numberOpacity: 'Number Opacity',
+          numberStrokeWidth: 'Number Stroke Width',
+          numberStrokeColor: 'Number Stroke Color',
           imageQuality: 'Image Quality',
           maxImageWidth: 'Max Image Width',
           markerTitle: 'Marker',
@@ -307,6 +329,15 @@ const i18n = createI18n({
           targetOverlapMax: 'Target Overlap Max',
           stopThreshold: 'Stop Threshold',
           scrollImageQuality: 'Image Quality'
+        },
+        selfCheck: {
+          title: 'Round Self-check',
+          enabled: 'Enable Self-check',
+          interval: 'Self-check Interval',
+          minChars: 'Minimum Characters',
+          docPath: 'Self-check Doc Path',
+          keywords: 'Self-check Keywords',
+          keywordsHint: 'One OR group per line, comma means AND'
         },
         security: {
           title: 'Security Settings',
@@ -338,6 +369,8 @@ const i18n = createI18n({
           numberSize: 'Font size of coordinate numbers in pixels',
           numberOpacity: 'Coordinate number opacity, 0%=fully transparent, 100%=fully opaque',
           numberColor: 'Display color of coordinate numbers',
+          numberStrokeWidth: 'Stroke width around coordinate numbers. 0 disables stroke, 1 is a light outline',
+          numberStrokeColor: 'Stroke color around coordinate numbers for readability on complex backgrounds',
           imageQuality: 'JPEG compression quality (1-100), higher values produce clearer images but larger files',
           maxImageWidth: 'Maximum width for screenshot scaling, images are proportionally scaled down to save bandwidth',
           markerRingRadius: 'Radius of the marker outer ring in pixels. Larger values make the marker more visible but may obscure nearby content',
@@ -356,6 +389,11 @@ const i18n = createI18n({
           targetOverlapMax: 'Target overlap upper bound (0.2-0.6). Ideal range upper bound for adjacent image overlap. Lower values reduce screenshot count but too little may fail stitching',
           stopThreshold: 'Stop threshold (1~0.0001, i.e. 100%~0.01%). Stop scrolling when content change rate falls below this, indicates bottom of page. Higher values detect bottom earlier but may stop prematurely',
           scrollImageQuality: 'Output image quality (1-100). Higher values produce clearer images but larger files. Recommended: 85-95',
+          selfCheckEnabled: 'When the screenshot counter reaches the interval, the next screenshot must include self_check',
+          selfCheckInterval: 'Number of successful screenshot calls before self-check is required. Multiple screenshots inside one batch count as one',
+          selfCheckMinChars: 'Minimum self_check character count after whitespace is removed',
+          selfCheckDocPath: 'Self-check document path shown to AI in API errors',
+          selfCheckKeywords: 'Keyword rules: each line is one OR group; comma-separated keywords in a line must all appear',
           autoConfirmProcesses: 'Processes in this list can perform keyboard/mouse operations without confirmation popup. Some apps (e.g. UWP, Microsoft Store apps) cannot be added due to system restrictions on retrieving process names',
           blockedProcesses: 'Processes in this list are prohibited from any keyboard/mouse operations'
         },
@@ -378,7 +416,9 @@ const i18n = createI18n({
         copy: 'Copy',
         lineByLine: 'one per line',
         refresh: 'Refresh',
-        loading: 'Loading...'
+        loading: 'Loading...',
+        enabled: 'Enabled',
+        disabled: 'Disabled'
       },
       aiIntegrate: {
         button: 'AI Auto Integrate',

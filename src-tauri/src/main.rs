@@ -53,6 +53,7 @@ pub struct Config {
     pub screenshot: ScreenshotConfig,
     #[serde(default)]
     pub input: InputConfig,
+    #[serde(default)]
     pub security: SecurityConfig,
     #[serde(default)]
     pub log: LogConfig,
@@ -61,6 +62,8 @@ pub struct Config {
     pub delegated: DelegatedConfig,
     #[serde(default)]
     pub scroll_screenshot: ScrollScreenshotConfig,
+    #[serde(default)]
+    pub self_check: SelfCheckConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,6 +100,8 @@ impl Default for ServerConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScreenshotConfig {
+    #[serde(default = "default_capture_method")]
+    pub capture_method: String,
     #[serde(default = "default_coordinate_type")]
     pub default_coordinate_type: String,
     #[serde(default = "default_color_mode")]
@@ -117,28 +122,54 @@ pub struct ScreenshotConfig {
     pub default_number_color: String,
     #[serde(default = "default_number_opacity")]
     pub default_number_opacity: i32,
+    #[serde(default = "default_number_stroke_width")]
+    pub default_number_stroke_width: i32,
+    #[serde(default = "default_number_stroke_color")]
+    pub default_number_stroke_color: String,
     #[serde(default = "default_image_quality")]
     pub image_quality: i32,
     #[serde(default = "default_max_image_width")]
     pub max_image_width: i32,
+    #[serde(default = "default_marker_ring_radius")]
+    pub default_marker_ring_radius: i32,
+    #[serde(default = "default_marker_ring_line_width")]
+    pub default_marker_ring_line_width: i32,
+    #[serde(default = "default_marker_ring_color")]
+    pub default_marker_ring_color: String,
+    #[serde(default = "default_marker_dot_radius")]
+    pub default_marker_dot_radius: i32,
+    #[serde(default = "default_marker_dot_color")]
+    pub default_marker_dot_color: String,
+    #[serde(default = "default_crop_zoom_scale")]
+    pub default_crop_zoom_scale: f32,
 }
 
+fn default_capture_method() -> String { "auto".to_string() }
 fn default_coordinate_type() -> String { "grid".to_string() }
 fn default_color_mode() -> String { "grayscale".to_string() }
 fn default_grid_density() -> f32 { 5.0 }
 fn default_grid_opacity() -> i32 { 50 }
 fn default_grid_color() -> String { "#ff0000".to_string() }
 fn default_number_density() -> i32 { 2 }
-fn default_number_decimal() -> i32 { 0 }
+fn default_number_decimal() -> i32 { 1 }
 fn default_number_size() -> i32 { 12 }
 fn default_number_color() -> String { "#ff0000".to_string() }
 fn default_number_opacity() -> i32 { 100 }
+fn default_number_stroke_width() -> i32 { 1 }
+fn default_number_stroke_color() -> String { "#ffffff".to_string() }
 fn default_image_quality() -> i32 { 85 }
 fn default_max_image_width() -> i32 { 1920 }
+fn default_marker_ring_radius() -> i32 { 12 }
+fn default_marker_ring_line_width() -> i32 { 2 }
+fn default_marker_ring_color() -> String { "#FF0000".to_string() }
+fn default_marker_dot_radius() -> i32 { 3 }
+fn default_marker_dot_color() -> String { "#FF0000".to_string() }
+fn default_crop_zoom_scale() -> f32 { 2.0 }
 
 impl Default for ScreenshotConfig {
     fn default() -> Self {
         ScreenshotConfig {
+            capture_method: default_capture_method(),
             default_coordinate_type: default_coordinate_type(),
             default_color_mode: default_color_mode(),
             default_grid_density: default_grid_density(),
@@ -149,8 +180,16 @@ impl Default for ScreenshotConfig {
             default_number_size: default_number_size(),
             default_number_color: default_number_color(),
             default_number_opacity: default_number_opacity(),
+            default_number_stroke_width: default_number_stroke_width(),
+            default_number_stroke_color: default_number_stroke_color(),
             image_quality: default_image_quality(),
             max_image_width: default_max_image_width(),
+            default_marker_ring_radius: default_marker_ring_radius(),
+            default_marker_ring_line_width: default_marker_ring_line_width(),
+            default_marker_ring_color: default_marker_ring_color(),
+            default_marker_dot_radius: default_marker_dot_radius(),
+            default_marker_dot_color: default_marker_dot_color(),
+            default_crop_zoom_scale: default_crop_zoom_scale(),
         }
     }
 }
@@ -172,6 +211,8 @@ fn default_newline_mapping() -> std::collections::HashMap<String, String> {
 pub struct SecurityConfig {
     #[serde(default)]
     pub blocked_processes: Vec<String>,
+    #[serde(default)]
+    pub auto_confirm_processes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -243,7 +284,7 @@ pub struct ScrollScreenshotConfig {
 
 fn default_max_scrolls() -> i32 { 5 }
 fn default_max_scroll_wait() -> f32 { 30.0 }
-fn default_max_timeout() -> i32 { 60 }
+fn default_max_timeout() -> i32 { 180 }
 fn default_default_scroll_percent() -> f32 { 0.85 }
 fn default_default_scroll_wait() -> f32 { 1.0 }
 fn default_max_adjust_retries() -> i32 { 4 }
@@ -265,6 +306,46 @@ impl Default for ScrollScreenshotConfig {
             target_overlap_max: default_target_overlap_max(),
             stop_threshold: default_stop_threshold(),
             image_quality: default_scroll_image_quality(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SelfCheckConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_self_check_interval")]
+    pub interval: i32,
+    #[serde(default = "default_self_check_min_chars")]
+    pub min_chars: i32,
+    #[serde(default = "default_self_check_doc_path")]
+    pub doc_path: String,
+    #[serde(default = "default_self_check_keywords")]
+    pub keywords: Vec<Vec<String>>,
+}
+
+fn default_self_check_interval() -> i32 { 10 }
+fn default_self_check_min_chars() -> i32 { 80 }
+fn default_self_check_doc_path() -> String { "skills/screenclaw/references/self_check.md".to_string() }
+fn default_self_check_keywords() -> Vec<Vec<String>> {
+    vec![
+        vec!["grid intersection".to_string(), "do not infer coordinates".to_string()],
+        vec!["crop zoom".to_string(), "marker verification".to_string()],
+        vec!["screenshot verification".to_string(), "after operation".to_string()],
+        vec!["网格交叉点".to_string(), "不能推测坐标".to_string()],
+        vec!["裁剪放大".to_string(), "标记点验证".to_string()],
+        vec!["截图验证".to_string(), "操作后".to_string()],
+    ]
+}
+
+impl Default for SelfCheckConfig {
+    fn default() -> Self {
+        SelfCheckConfig {
+            enabled: true,
+            interval: default_self_check_interval(),
+            min_chars: default_self_check_min_chars(),
+            doc_path: default_self_check_doc_path(),
+            keywords: default_self_check_keywords(),
         }
     }
 }

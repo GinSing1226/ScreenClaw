@@ -15,10 +15,12 @@ class GridRenderer:
         grid_opacity: int = 50,
         grid_color: str = "#ff0000",
         number_density: int = 2,
-        number_decimal: int = 0,
+        number_decimal: int = 1,
         number_size: int = 12,
         number_color: str = "#ff0000",
         number_opacity: int = 100,
+        number_stroke_width: int = 1,
+        number_stroke_color: str = "#ffffff",
         color_mode: str = "grayscale"
     ):
         self.density_x = density_x
@@ -30,6 +32,8 @@ class GridRenderer:
         self.number_size = number_size
         self.number_color = number_color
         self.number_opacity = number_opacity
+        self.number_stroke_width = number_stroke_width
+        self.number_stroke_color = number_stroke_color
         self.color_mode = color_mode
 
     def draw_grid(self, image: Image.Image) -> Image.Image:
@@ -57,9 +61,11 @@ class GridRenderer:
         # 解析颜色
         grid_rgba = self._hex_to_rgba(self.grid_color, self.grid_opacity)
         number_rgba = self._hex_to_rgba(self.number_color, self.number_opacity)
+        stroke_rgba = self._hex_to_rgba(self.number_stroke_color, 100)
 
         # 加载字体
         font = self._load_font(self.number_size)
+        separator_font = self._load_font(max(4, int(round(self.number_size * 0.5))))
 
         # 计算网格间距（像素）
         grid_step_x = int(width * self.density_x / 100)
@@ -74,7 +80,7 @@ class GridRenderer:
 
         # 绘制坐标数字
         self._draw_coordinates(
-            draw, width, height, grid_step_x, grid_step_y, font, number_rgba
+            draw, width, height, grid_step_x, grid_step_y, font, separator_font, number_rgba, stroke_rgba
         )
 
         # 合并图层
@@ -114,12 +120,11 @@ class GridRenderer:
         step_x: int,
         step_y: int,
         font: ImageFont.FreeTypeFont,
-        color: Tuple[int, int, int, int]
+        separator_font: ImageFont.FreeTypeFont,
+        color: Tuple[int, int, int, int],
+        stroke_color: Tuple[int, int, int, int]
     ):
         """绘制坐标数字"""
-        text_step_x = step_x * self.number_density
-        text_step_y = step_y * self.number_density
-
         # 使用百分比作为循环变量（0-100），避免累加误差
         percent_step_x = self.density_x * self.number_density
         percent_step_y = self.density_y * self.number_density
@@ -133,24 +138,13 @@ class GridRenderer:
                 y = int(height * percent_y / 100)
 
                 # 格式化坐标文本
-                text = self._format_coordinate(percent_x, percent_y)
+                left, sep, right = self._format_coordinate_parts(percent_x, percent_y)
 
-                # 计算文本位置（交叉点上方）
-                bbox = draw.textbbox((0, 0), text, font=font)
-                text_width = bbox[2] - bbox[0]
-                text_height = bbox[3] - bbox[1]
-
-                pos_x = x - text_width // 2
-                pos_y = y - text_height - 2  # 上方偏移
-
-                # 确保不超出边界
-                if pos_x < 0:
-                    pos_x = 0
-                if pos_y < 0:
-                    pos_y = 0
-
-                # 绘制文本
-                draw.text((pos_x, pos_y), text, fill=color, font=font)
+                # 绘制文本：分隔符 x 对齐交叉点，数字悬停在横线上方 1px
+                self._draw_coordinate_text(
+                    draw, x, y, left, sep, right,
+                    font, separator_font, color, stroke_color
+                )
 
                 percent_y += percent_step_y
 
@@ -158,11 +152,119 @@ class GridRenderer:
 
     def _format_coordinate(self, x_percent: float, y_percent: float) -> str:
         """格式化坐标文本，使用x作为分隔符"""
+        left, sep, right = self._format_coordinate_parts(x_percent, y_percent)
+        return f"{left}{sep}{right}"
+
+    def _format_coordinate_parts(self, x_percent: float, y_percent: float) -> Tuple[str, str, str]:
+        """格式化坐标文本组件，分隔符使用半字号绘制"""
         if self.number_decimal == 0:
-            return f"{int(round(x_percent))}x{int(round(y_percent))}"
+            return (str(int(round(x_percent))), "x", str(int(round(y_percent))))
         else:
             format_str = f"{{:.{self.number_decimal}f}}"
-            return f"{format_str.format(x_percent)}x{format_str.format(y_percent)}"
+            return (format_str.format(x_percent), "x", format_str.format(y_percent))
+
+    @staticmethod
+    def measure_coordinate_text(
+        draw: ImageDraw.ImageDraw,
+        left: str,
+        sep: str,
+        right: str,
+        font: ImageFont.FreeTypeFont,
+        separator_font: ImageFont.FreeTypeFont
+    ) -> Tuple[int, int]:
+        """测量混合字号坐标文本尺寸"""
+        left_bbox = draw.textbbox((0, 0), left, font=font)
+        sep_bbox = draw.textbbox((0, 0), sep, font=separator_font)
+        right_bbox = draw.textbbox((0, 0), right, font=font)
+        width = (left_bbox[2] - left_bbox[0]) + (sep_bbox[2] - sep_bbox[0]) + (right_bbox[2] - right_bbox[0])
+        height = max(
+            left_bbox[3] - left_bbox[1],
+            sep_bbox[3] - sep_bbox[1],
+            right_bbox[3] - right_bbox[1],
+        )
+        return width, height
+
+    def _draw_coordinate_text(
+        self,
+        draw: ImageDraw.ImageDraw,
+        anchor_x: int,
+        anchor_y: int,
+        left: str,
+        sep: str,
+        right: str,
+        font: ImageFont.FreeTypeFont,
+        separator_font: ImageFont.FreeTypeFont,
+        color: Tuple[int, int, int, int],
+        stroke_color: Tuple[int, int, int, int]
+    ):
+        """绘制混合字号坐标文本。
+
+        分隔符 x 的可见区域中心对齐网格交叉点；左右数字的可见区域
+        底部贴在横线正上方 1px，减少数字笔画和横线重叠。
+        """
+        stroke_width = self.number_stroke_width
+        layout = self._coordinate_text_layout(
+            draw, anchor_x, anchor_y, left, sep, right, font, separator_font
+        )
+        for text, current_font, position in (
+            (left, font, layout["left"]),
+            (sep, separator_font, layout["sep"]),
+            (right, font, layout["right"]),
+        ):
+            draw.text(
+                position,
+                text,
+                fill=color,
+                font=current_font,
+                stroke_width=stroke_width,
+                stroke_fill=stroke_color if stroke_width > 0 else None
+            )
+
+    @staticmethod
+    def _coordinate_text_layout(
+        draw: ImageDraw.ImageDraw,
+        anchor_x: int,
+        anchor_y: int,
+        left: str,
+        sep: str,
+        right: str,
+        font: ImageFont.FreeTypeFont,
+        separator_font: ImageFont.FreeTypeFont
+    ) -> dict:
+        """计算坐标文本三段绘制位置。"""
+        left_bbox = draw.textbbox((0, 0), left, font=font)
+        sep_bbox = draw.textbbox((0, 0), sep, font=separator_font)
+        right_bbox = draw.textbbox((0, 0), right, font=font)
+
+        def width(bbox):
+            return bbox[2] - bbox[0]
+
+        def height(bbox):
+            return bbox[3] - bbox[1]
+
+        left_w = width(left_bbox)
+        left_h = height(left_bbox)
+        sep_w = width(sep_bbox)
+        sep_h = height(sep_bbox)
+        right_h = height(right_bbox)
+
+        sep_left = anchor_x - sep_w / 2
+        digit_bottom = anchor_y - 1
+
+        left_pos = (
+            int(round(sep_left - left_w - left_bbox[0])),
+            int(round(digit_bottom - left_h - left_bbox[1])),
+        )
+        sep_pos = (
+            int(round(anchor_x - sep_w / 2 - sep_bbox[0])),
+            int(round(anchor_y - sep_h / 2 - sep_bbox[1])),
+        )
+        right_pos = (
+            int(round(sep_left + sep_w - right_bbox[0])),
+            int(round(digit_bottom - right_h - right_bbox[1])),
+        )
+
+        return {"left": left_pos, "sep": sep_pos, "right": right_pos}
 
     def _hex_to_rgba(self, hex_color: str, opacity: int) -> Tuple[int, int, int, int]:
         """HEX颜色转RGBA"""

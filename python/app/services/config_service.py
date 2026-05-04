@@ -147,6 +147,12 @@ class ConfigService:
         """获取配置（每次重新加载以获取最新值）"""
         self.config = self._load_or_create()
         self._build_cache(self.config)
+        if not self.config.self_check.enabled:
+            try:
+                from app.services.self_check_service import self_check_service
+                self_check_service.reset_all()
+            except Exception:
+                pass
         return self.config
 
     def update_local_ip(self):

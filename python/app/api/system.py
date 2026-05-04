@@ -15,6 +15,8 @@ from app.models.response import (
     create_error_response
 )
 from app.services.log_service import log_service
+from app.services.self_check_service import self_check_service
+from app.services.screenshot_params_service import screenshot_params_service
 from app.utils.coordinate import restore_window_and_calc_coords
 
 router = APIRouter()
@@ -47,6 +49,25 @@ async def batch_execute(request: BatchRequest, req: Request = None, authorizatio
     results = []
     executed_count = 0
     failed_index = None
+    batch_has_screenshot = any(inst.action == "screenshot" for inst in request.instructions)
+    screenshot_success_in_batch = False
+
+    if batch_has_screenshot:
+        from app.services.config_service import config_service
+        self_check_value = None
+        for inst in request.instructions:
+            if inst.action == "screenshot" and "self_check" in inst.params:
+                self_check_value = inst.params.get("self_check")
+                break
+        self_check_result = self_check_service.validate_before_screenshot(
+            request.session_id,
+            self_check_value,
+            config_service.get().self_check
+        )
+        if not self_check_result.ok:
+            return self_check_result.response
+    else:
+        self_check_result = None
 
     for i, instruction in enumerate(request.instructions):
         # 执行单条指令
@@ -69,6 +90,8 @@ async def batch_execute(request: BatchRequest, req: Request = None, authorizatio
 
         if result["success"]:
             executed_count += 1
+            if instruction.action == "screenshot":
+                screenshot_success_in_batch = True
         else:
             # 失败时中断
             failed_index = i
@@ -96,13 +119,21 @@ async def batch_execute(request: BatchRequest, req: Request = None, authorizatio
         result={
             "success": failed_index is None,
             "executed_count": executed_count,
-            "failed_index": failed_index
+            "failed_index": failed_index,
+            "results": [r.model_dump() for r in results]
         },
         duration_ms=duration_ms,
         client_ip=client_ip
     )
 
     if failed_index is not None:
+        if screenshot_success_in_batch:
+            from app.services.config_service import config_service
+            self_check_service.record_screenshot_success(
+                request.session_id,
+                config_service.get().self_check,
+                units=1
+            )
         failed_action = request.instructions[failed_index].action
         failed_msg = results[failed_index].message
         return BatchResponse(
@@ -115,9 +146,21 @@ async def batch_execute(request: BatchRequest, req: Request = None, authorizatio
             )
         )
 
+    if batch_has_screenshot:
+        from app.services.config_service import config_service
+        notice = self_check_service.record_screenshot_success(
+            request.session_id,
+            config_service.get().self_check,
+            units=1
+        )
+    else:
+        notice = None
+
+    message = "Execution completed."
+
     return BatchResponse(
         success=True,
-        message="Execution completed",
+        message=message,
         data=BatchData(
             executed_count=executed_count,
             failed_index=None,
@@ -153,7 +196,7 @@ async def _execute_single_instruction(
         action_method = "delegated"
 
     # 成功消息：最后一步提示可截图验证
-    _success_msg = "Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning." if is_last else "Command sent"
+    _success_msg = "Command sent."
 
     # 获取进程信息（所有模式都需要，用于禁止检查）
     process_info = process_service.get_process_by_window_id(window_id)
@@ -380,7 +423,7 @@ async def _execute_single_instruction(
             else:
                 actual = dur
             time.sleep(actual / 1000)
-            return {"success": True, "message": "Wait completed"}
+            return {"success": True, "message": "Wait completed."}
 
         elif action == "screenshot":
             from app.platform.windows.capture import windows_capture
@@ -401,39 +444,40 @@ async def _execute_single_instruction(
                 return {"success": False, "message": result.error}
 
             image = result.image
+            config = config_service.get()
+            image = compress_image(
+                image,
+                quality=config.screenshot.image_quality,
+                max_width=config.screenshot.max_image_width
+            )
 
             # 绘制网格（根据指令参数）
             coord_type = params.get("coordinate_type", "grid")
+            effective_grid = None
+            effective_coordinate = None
+            effective_color_mode = params.get("color_mode") or config.screenshot.default_color_mode
+            adaptive_adjustments = []
+            renderer = None
             if coord_type != "no":
-                config = config_service.get()
-
-                grid_params = params.get("grid", {})
-                grid_density_x = grid_params.get("density_x", config.screenshot.default_grid_density)
-                grid_density_y = grid_params.get("density_y", config.screenshot.default_grid_density)
-                grid_opacity = grid_params.get("opacity", config.screenshot.default_grid_opacity)
-                grid_color = grid_params.get("color", config.screenshot.default_grid_color)
-
-                coord_params = params.get("coordinate", {})
-                number_density = coord_params.get("number_density", config.screenshot.default_number_density)
-                number_decimal = coord_params.get("number_decimal", config.screenshot.default_number_decimal)
-                number_size = coord_params.get("number_size", config.screenshot.default_number_size)
-                number_color = coord_params.get("number_color", config.screenshot.default_number_color)
-                number_opacity = coord_params.get("number_opacity", config.screenshot.default_number_opacity)
-
-                # color_mode: 请求参数 > 配置默认值
-                color_mode = params.get("color_mode") or config.screenshot.default_color_mode
+                params_result = screenshot_params_service.build_from_dict(params, config, image.size)
+                effective_grid = params_result.grid
+                effective_coordinate = params_result.coordinate
+                effective_color_mode = params_result.color_mode
+                adaptive_adjustments = params_result.adaptive_adjustments
 
                 renderer = GridRenderer(
-                    density_x=grid_density_x,
-                    density_y=grid_density_y,
-                    grid_opacity=grid_opacity,
-                    grid_color=grid_color,
-                    number_density=number_density,
-                    number_decimal=number_decimal,
-                    number_size=number_size,
-                    number_color=number_color,
-                    number_opacity=number_opacity,
-                    color_mode=color_mode
+                    density_x=effective_grid["density_x"],
+                    density_y=effective_grid["density_y"],
+                    grid_opacity=effective_grid["opacity"],
+                    grid_color=effective_grid["color"],
+                    number_density=effective_coordinate["number_density"],
+                    number_decimal=effective_coordinate["number_decimal"],
+                    number_size=effective_coordinate["number_size"],
+                    number_color=effective_coordinate["number_color"],
+                    number_opacity=effective_coordinate["number_opacity"],
+                    number_stroke_width=effective_coordinate["number_stroke_width"],
+                    number_stroke_color=effective_coordinate["number_stroke_color"],
+                    color_mode=params_result.color_mode
                 )
                 image = renderer.draw_grid(image)
 
@@ -447,7 +491,7 @@ async def _execute_single_instruction(
                         return {"success": False, "message": "Marker requires both x and y"}
                 config = config_service.get()
                 # 确保有 renderer 实例（如果没画网格则创建一个最小实例）
-                if coord_type == "no":
+                if renderer is None:
                     renderer = GridRenderer()
                 for mp in marker_list:
                     image = renderer.draw_marker(
@@ -460,14 +504,6 @@ async def _execute_single_instruction(
                         dot_radius=mp.get("dot_radius", config.screenshot.default_marker_dot_radius),
                         dot_color=mp.get("dot_color", config.screenshot.default_marker_dot_color)
                     )
-
-            # 压缩图片
-            config = config_service.get()
-            image = compress_image(
-                image,
-                quality=config.screenshot.image_quality,
-                max_width=config.screenshot.max_image_width
-            )
 
             # 保存图片（使用 session_id 组织目录，不区分窗口）
             data_dir = generate_data_dir("data", ai_app_type, session_id)
@@ -484,11 +520,43 @@ async def _execute_single_instruction(
                 result_data = {"image_path": os.path.abspath(image_path)}
             else:
                 result_data = {"image_base64": image_base64}
+            result_data["requested_params"] = {
+                **{
+                    "ai_app_type": ai_app_type,
+                    "session_id": session_id,
+                    "window_id": window_id,
+                    "main_window_id": main_window_id,
+                    "coordinate_type": coord_type,
+                    "image_quality": config.screenshot.image_quality,
+                    "max_image_width": config.screenshot.max_image_width,
+                },
+                **{k: v for k, v in params.items() if k != "self_check"},
+            }
+            result_data["effective_params"] = {
+                "ai_app_type": ai_app_type,
+                "session_id": session_id,
+                "window_id": window_id,
+                "main_window_id": main_window_id,
+                "coordinate_type": coord_type,
+                "color_mode": effective_color_mode,
+                "image_quality": config.screenshot.image_quality,
+                "max_image_width": config.screenshot.max_image_width,
+                "output_size": {"width": image.size[0], "height": image.size[1]},
+            }
+            if effective_grid is not None:
+                result_data["effective_grid"] = effective_grid
+                result_data["effective_coordinate"] = effective_coordinate
+                result_data["effective_params"]["grid"] = effective_grid
+                result_data["effective_params"]["coordinate"] = effective_coordinate
+                result_data["adaptive_adjustments"] = adaptive_adjustments
+            if marker_params:
+                result_data["effective_marker"] = marker_params
+                result_data["effective_params"]["marker"] = marker_params
 
             if marker_params:
-                screenshot_msg = "Screenshot successful. Marker indicates the position of your input coordinates on the image. If result is unsatisfactory, refer to skill.md for parameter tuning."
+                screenshot_msg = "Screenshot successful. Marker drawn."
             else:
-                screenshot_msg = "Screenshot successful. If result is unsatisfactory, refer to skill.md for parameter tuning."
+                screenshot_msg = "Screenshot successful."
 
             return {
                 "success": True,
@@ -497,66 +565,77 @@ async def _execute_single_instruction(
             }
 
         elif action == "crop_zoom_screenshot":
-            from app.utils.image import image_to_base64, save_image
+            from app.utils.image import image_to_base64, base64_to_image, save_image
             from app.utils.image import generate_crop_zoom_filename, generate_data_dir
             from app.utils.image import validate_source_image_path, crop_and_zoom
             from PIL import Image
 
-            required_fields = ["source_image_path", "center_x", "center_y", "crop_width", "crop_height"]
+            required_fields = ["center_x", "center_y", "crop_width", "crop_height"]
             for field in required_fields:
                 if field not in params:
                     return {"success": False, "message": f"Missing required parameter: {field}"}
 
+            # source_image_path 和 source_image_base64 二选一
+            if "source_image_path" not in params and "source_image_base64" not in params:
+                return {"success": False, "message": "Either source_image_path or source_image_base64 must be provided"}
+            if "source_image_path" in params and "source_image_base64" in params:
+                return {"success": False, "message": "Only one of source_image_path or source_image_base64 should be provided"}
+
             config = config_service.get()
-            source_path = params["source_image_path"]
+            source_path = params.get("source_image_path")
+            source_base64 = params.get("source_image_base64")
             center_x = params["center_x"]
             center_y = params["center_y"]
             crop_w = params["crop_width"]
             crop_h = params["crop_height"]
             zoom_scale = params.get("zoom_scale", config.screenshot.default_crop_zoom_scale)
 
-            # 路径校验
-            path_error = validate_source_image_path(source_path)
-            if path_error:
-                log_service.log(
-                    ai_app_type=ai_app_type, session_id=session_id, window_id=0,
-                    process_name="", instruction="crop_zoom_screenshot",
-                    params=params, result={"success": False, "message": path_error},
-                    client_ip=client_ip
-                )
-                return {"success": False, "message": path_error}
-
-            if not source_path or not os.path.exists(source_path):
-                log_service.log(
-                    ai_app_type=ai_app_type, session_id=session_id, window_id=0,
-                    process_name="", instruction="crop_zoom_screenshot",
-                    params=params, result={"success": False, "message": f"Image file not found: {source_path}"},
-                    client_ip=client_ip
-                )
-                return {"success": False, "message": f"Image file not found: {source_path}. Check if the file exists or the path is correct."}
-
+            # 加载源图片
+            source_image = None
             try:
-                with Image.open(source_path) as source_image:
-                    try:
-                        zoomed = crop_and_zoom(
-                            source_image, center_x, center_y, crop_w, crop_h, zoom_scale
-                        )
-                    except ValueError as e:
+                if source_base64:
+                    source_image = base64_to_image(source_base64)
+                else:
+                    path_error = validate_source_image_path(source_path)
+                    if path_error:
                         log_service.log(
                             ai_app_type=ai_app_type, session_id=session_id, window_id=0,
                             process_name="", instruction="crop_zoom_screenshot",
-                            params=params, result={"success": False, "message": str(e)},
+                            params=params, result={"success": False, "message": path_error},
                             client_ip=client_ip
                         )
-                        return {"success": False, "message": str(e)}
+                        return {"success": False, "message": path_error}
+
+                    if not source_path or not os.path.exists(source_path):
+                        log_service.log(
+                            ai_app_type=ai_app_type, session_id=session_id, window_id=0,
+                            process_name="", instruction="crop_zoom_screenshot",
+                            params=params, result={"success": False, "message": f"Image file not found: {source_path}"},
+                            client_ip=client_ip
+                        )
+                        return {"success": False, "message": f"Image file not found. Reason: {source_path}. Next: use the image_path returned by the latest screenshot or pass source_image_base64 for remote clients. See references/api/crop_zoom_screenshot.md."}
+                    source_image = Image.open(source_path)
             except Exception as e:
                 log_service.log(
                     ai_app_type=ai_app_type, session_id=session_id, window_id=0,
                     process_name="", instruction="crop_zoom_screenshot",
-                    params=params, result={"success": False, "message": f"Failed to read image: {source_path}"},
+                    params=params, result={"success": False, "message": "Failed to load source image"},
                     client_ip=client_ip
                 )
-                return {"success": False, "message": f"Failed to read image: {source_path}. Unsupported format or corrupted file."}
+                return {"success": False, "message": "Failed to load source image. Check the input format."}
+
+            try:
+                zoomed = crop_and_zoom(
+                    source_image, center_x, center_y, crop_w, crop_h, zoom_scale
+                )
+            except ValueError as e:
+                log_service.log(
+                    ai_app_type=ai_app_type, session_id=session_id, window_id=0,
+                    process_name="", instruction="crop_zoom_screenshot",
+                    params=params, result={"success": False, "message": str(e)},
+                    client_ip=client_ip
+                )
+                return {"success": False, "message": str(e)}
 
             data_dir = generate_data_dir("data", ai_app_type, session_id)
             filename = generate_crop_zoom_filename()
@@ -569,6 +648,24 @@ async def _execute_single_instruction(
                 result_data = {"image_path": os.path.abspath(image_path)}
             else:
                 result_data = {"image_base64": image_base64}
+            result_data["requested_params"] = {
+                "ai_app_type": ai_app_type,
+                "session_id": session_id,
+                **{k: ("<provided>" if k == "source_image_base64" else v) for k, v in params.items()},
+                "zoom_scale": zoom_scale,
+            }
+            img_w, img_h = source_image.size
+            result_data["effective_crop"] = {
+                "center_x": center_x,
+                "center_y": center_y,
+                "crop_width": crop_w,
+                "crop_height": crop_h,
+                "zoom_scale": zoom_scale,
+                "source_size": {"width": img_w, "height": img_h},
+                "output_size": {"width": zoomed.size[0], "height": zoomed.size[1]},
+            }
+            result_data["effective_params"] = result_data["effective_crop"]
+            result_data["source_image_path"] = source_path
 
             log_service.log(
                 ai_app_type=ai_app_type, session_id=session_id, window_id=0,
@@ -579,7 +676,7 @@ async def _execute_single_instruction(
 
             return {
                 "success": True,
-                "message": "Crop zoom successful. If details are still unclear, adjust parameters and process the same source image again.",
+                "message": "Crop zoom successful.",
                 "data": result_data
             }
 

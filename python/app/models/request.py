@@ -28,10 +28,12 @@ class GridParams(BaseModel):
 class CoordinateParams(BaseModel):
     """坐标参数"""
     number_density: int = Field(default=2, ge=1, description="数字密度")
-    number_decimal: int = Field(default=0, ge=0, le=4, description="小数位")
+    number_decimal: int = Field(default=1, ge=0, le=4, description="小数位")
     number_size: int = Field(default=12, ge=4, le=64, description="字体大小")
     number_color: str = Field(default="#ff0000", description="数字颜色")
     number_opacity: int = Field(default=100, ge=0, le=100, description="数字透明度")
+    number_stroke_width: int = Field(default=1, ge=0, le=8, description="数字描边宽度")
+    number_stroke_color: str = Field(default="#ffffff", description="数字描边颜色")
 
 
 class ScreenshotRequest(BaseRequest):
@@ -41,6 +43,7 @@ class ScreenshotRequest(BaseRequest):
     grid: Optional[GridParams] = Field(default=None, description="网格参数")
     coordinate: Optional[CoordinateParams] = Field(default=None, description="坐标参数")
     marker: Optional[Union["MarkerParams", List["MarkerParams"]]] = Field(default=None, description="标记参数，支持单个对象或数组")
+    self_check: Optional[str] = Field(default=None, description="轮数自检内容")
 
     @field_validator('marker', mode='before')
     @classmethod
@@ -266,7 +269,8 @@ class CropZoomRequest(BaseModel):
     """裁剪放大请求 - 对已有图片进行裁剪并放大"""
     ai_app_type: str = Field(..., description="AI应用类型")
     session_id: str = Field(..., description="会话ID")
-    source_image_path: str = Field(..., description="原始图片路径（screenshot或scroll_screenshot返回的路径）")
+    source_image_path: Optional[str] = Field(default=None, description="原始图片路径（本地请求使用，与source_image_base64二选一）")
+    source_image_base64: Optional[str] = Field(default=None, description="原始图片base64（远程请求使用，与source_image_path二选一）")
     center_x: float = Field(..., ge=0, le=100, description="裁剪区域中心点横坐标百分比(0-100)")
     center_y: float = Field(..., ge=0, le=100, description="裁剪区域中心点纵坐标百分比(0-100)")
     crop_width: float = Field(..., gt=0, le=100, description="裁剪区域总宽度百分比(0-100)")

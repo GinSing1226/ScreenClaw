@@ -86,6 +86,16 @@ pub async fn get_service_status(
 pub async fn get_config(
     state: State<'_, Arc<AppState>>,
 ) -> Result<Config, String> {
+    let config_path = get_config_path();
+    if config_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&config_path) {
+            if let Ok(file_config) = serde_json::from_str::<Config>(&content) {
+                let mut config = state.config.lock().await;
+                *config = file_config.clone();
+                return Ok(file_config);
+            }
+        }
+    }
     let config = state.config.lock().await;
     Ok(config.clone())
 }
@@ -208,6 +218,7 @@ pub struct LogItem {
     pub instruction: String,
     pub params: serde_json::Value,  // 请求参数
     pub result: serde_json::Value,
+    pub duration_ms: i64,
 }
 
 /// 从日志文件名提取信息（如 openclaw__test__2026-03-26.jsonl）
@@ -289,6 +300,9 @@ pub async fn get_logs() -> Result<Vec<LogItem>, String> {
                                 result: json.get("result")
                                     .cloned()
                                     .unwrap_or(serde_json::json!({"success": false})),
+                                duration_ms: json.get("duration_ms")
+                                    .and_then(|v| v.as_i64())
+                                    .unwrap_or(0),
                             };
                             logs.push(log);
                         }

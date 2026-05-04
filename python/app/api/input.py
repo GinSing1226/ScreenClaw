@@ -88,7 +88,7 @@ async def input_text(request: InputTextRequest, req: Request = None, authorizati
     )
 
     if inject_result.success:
-        return OperationResponse(success=True, message="Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning.")
+        return OperationResponse(success=True, message="Command sent.")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)
 
@@ -149,6 +149,6 @@ async def press_key(request: PressKeyRequest, req: Request = None, authorization
     )
 
     if inject_result.success:
-        return OperationResponse(success=True, message="Command sent. Take a screenshot to verify. If result is unsatisfactory, refer to skill.md for parameter tuning.")
+        return OperationResponse(success=True, message="Command sent.")
     else:
         return create_error_response("OPERATION_FAILED", inject_result.error)

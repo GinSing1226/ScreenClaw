@@ -45,6 +45,6 @@ async def get_window_list(
 
     return GetWindowListResponse(
         success=True,
-        message="Success",
+        message="Window list retrieved.",
         data={"windows": windows}
     )

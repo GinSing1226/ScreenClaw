@@ -244,7 +244,8 @@ def generate_data_dir(
     """
     生成数据存储目录
 
-    格式: 项目根目录/data/ai_app_type__session_id__yyyy-mm-dd/
+    格式: 项目根目录/data/ai_app_type__session_id__first-created-date/
+    同一个 ai_app_type + session_id 跨日期复用首次创建的目录。
 
     Args:
         base_dir: 基础目录名（如 "data"）
@@ -257,9 +258,16 @@ def generate_data_dir(
     # 使用项目根目录下的data目录
     project_data_dir = get_data_dir()
 
+    prefix = f"{ai_app_type}__{session_id}__"
+    existing_dirs = sorted(
+        path for path in project_data_dir.glob(f"{prefix}*")
+        if path.is_dir()
+    )
+    if existing_dirs:
+        return str(existing_dirs[0])
+
     date_str = datetime.now().strftime("%Y-%m-%d")
-    dir_name = f"{ai_app_type}__{session_id}__{date_str}"
-    dir_path = project_data_dir / dir_name
+    dir_path = project_data_dir / f"{prefix}{date_str}"
 
     if not dir_path.exists():
         dir_path.mkdir(parents=True, exist_ok=True)

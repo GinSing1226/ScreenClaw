@@ -47,15 +47,17 @@ update: {YYYY-MM-DD}
 
 ## 常用截图参数
 
-场景中需要截图定位时，默认使用以下参数（不需要在每个节点重复说明）：
+场景中需要截图定位时，默认先使用服务端自适应参数，不需要在每个节点重复说明。只有某个节点需要固定覆盖参数时，才填写下表：
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | color_mode | grayscale | 灰度模式，彩色网格更醒目 |
-| grid_density | 5.0 | 标准密度 |
-| number_density | 2 | 标准数字密度 |
+| grid.density_x | 不传 | 目标没有被竖线覆盖时才显式传 |
+| grid.density_y | 不传 | 目标没有被横线覆盖时才显式传 |
+| coordinate.number_density | 不传 | 周围交叉点缺少数字时才显式传 |
+| coordinate.number_size | 不传 | 数字看不清时才显式传 |
 
-> 仅当某个节点的截图需求与默认参数不同时，才在该节点的P（处理）中单独说明。例如：需要看清原始色彩时 `color_mode=color`，需要精确定位时 `grid_density=3 number_density=1`。
+> 仅当某个节点的截图需求与默认参数不同时，才在该节点的 P（处理）中单独说明。例如：需要看清原始色彩时 `color_mode=color`，目标没有被交叉点覆盖时 `grid.density_x=3.3 grid.density_y=5`。
 
 ## 业务流节点详解
 
@@ -93,13 +95,16 @@ update: {YYYY-MM-DD}
 - **固定坐标节点**：直接组合成 batch 指令
 - **动态坐标节点（需验证）**：截图定位 → 执行 → 截图验证结果 → 再继续
 - **动态坐标节点（高可靠）**：截图定位 → 获取坐标后，与后续固定坐标节点一起 batch 执行。仅在历史执行从未出错时标记为"高可靠"
+- **高风险动态坐标**：截图定位 → marker 反验 → 执行 → 截图验证
 
 ```bash
 # 节点1+2 组合（全部固定坐标，batch执行）
-python scripts/api_call.py {api_url} {token} batch \
+python scripts/screenclaw.py batch api_url={api_url} token={token} \
   ai_app_type={ai_app_type} session_id={session_id} \
   main_window_id={main_window_id} \
-  instructions='[...]'
+  window_id={window_id} \
+  step.0.action=click step.0.params.x=15 step.0.params.y=35 \
+  step.1.action=wait step.1.params.duration_ms=300
 
 # 截图验证节点2的输出，确认能进入节点3
 
@@ -113,6 +118,7 @@ python scripts/api_call.py {api_url} {token} batch \
 > - 指令中用 `{xxx}` 标记需要运行时填充的参数
 > - 每段指令前用注释说明这段指令的目的和上下文
 > - 动态坐标节点在指令中以 `{从截图读取}` 标记
+> - 所有示例使用 `scripts/screenclaw.py` 的点号路径；PowerShell/bash 只替换入口，不改变参数格式
 
 ## 常见问题
 

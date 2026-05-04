@@ -34,6 +34,31 @@ def is_local_request(client_ip: str) -> bool:
     return client_ip in local_ips
 
 
+def _requested_scroll_params(request: ScrollScreenshotRequest) -> dict:
+    return request.model_dump(
+        exclude={"client_ip", "process_info", "start_time"},
+        exclude_none=True,
+    )
+
+
+def _effective_scroll_params(request: ScrollScreenshotRequest, result) -> dict:
+    return {
+        "x": request.x,
+        "y": request.y,
+        "max_scrolls": request.max_scrolls,
+        "scroll_percent": request.scroll_percent,
+        "scroll_wait": request.scroll_wait,
+        "max_adjust_retries": request.max_adjust_retries,
+        "target_overlap_min": request.target_overlap_min,
+        "target_overlap_max": request.target_overlap_max,
+        "stop_threshold": request.stop_threshold,
+        "scroll_count": result.scroll_count,
+        "actual_scroll_percent": result.actual_scroll_percent,
+        "fixed_header": result.fixed_header,
+        "fixed_footer": result.fixed_footer,
+    }
+
+
 @router.post("/scroll_screenshot")
 @with_verification
 @with_hijack_confirm("Scroll screenshot", lambda r: f"Max scrolls: {r.max_scrolls}, Scroll percent: {r.scroll_percent * 100:.0f}%")
@@ -183,6 +208,9 @@ async def scroll_screenshot(
             response_data = ScrollScreenshotData(
                 image_path=os.path.abspath(image_path),
                 image_base64=None,
+                requested_params=_requested_scroll_params(request),
+                effective_params=_effective_scroll_params(filled_request, result),
+                effective_scroll=_effective_scroll_params(filled_request, result),
                 scroll_count=result.scroll_count,
                 actual_scroll_percent=result.actual_scroll_percent,
                 fixed_header=result.fixed_header,
@@ -193,6 +221,9 @@ async def scroll_screenshot(
             response_data = ScrollScreenshotData(
                 image_path=None,
                 image_base64=image_base64,
+                requested_params=_requested_scroll_params(request),
+                effective_params=_effective_scroll_params(filled_request, result),
+                effective_scroll=_effective_scroll_params(filled_request, result),
                 scroll_count=result.scroll_count,
                 actual_scroll_percent=result.actual_scroll_percent,
                 fixed_header=result.fixed_header,
@@ -206,21 +237,19 @@ async def scroll_screenshot(
             process_name=process_info.process_name,
             instruction="scroll_screenshot",
             params={
-                "max_scrolls": request.max_scrolls,
-                "scroll_percent": request.scroll_percent,
-                "scroll_wait": request.scroll_wait
+                "requested_params": _requested_scroll_params(request)
             },
             result={
                 "success": True,
-                "scroll_count": result.scroll_count,
-                "image_path": image_path
+                "message": "Scroll screenshot successful.",
+                "data": response_data.model_dump(exclude={"image_base64"})
             },
             duration_ms=duration_ms,
         )
 
         return ScrollScreenshotResponse(
             success=True,
-            message=result.message,
+            message="Scroll screenshot successful.",
             data=response_data
         )
     else:

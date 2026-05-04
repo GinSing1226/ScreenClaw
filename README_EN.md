@@ -40,6 +40,7 @@ Using `background` mode with PostMessage/SendMessage to inject events, it never 
 - Gives any multimodal LLM precise positioning capability with faster recognition
 - Percentage-based (0-100) coordinate system that works with any window size as long as the aspect ratio remains unchanged
 - Same coordinates work across different resolutions and window sizes
+- Adaptive grid density and number size: automatically generates optimal density and font size based on compressed image dimensions, preventing AI from passing bad parameters that affect coordinate reading
 
 ### 💻 Control Desktop Software
 Automates most desktop software, especially traditional software without API, CLI, or other automation tools.
@@ -63,6 +64,15 @@ Automate mobile emulators and official phone assistants (multi-screen collaborat
 
 ### 🎮 Delegated Mode
 Enter when user requests full control. AI completely controls the computer with physical input, no individual confirmations needed. Ideal for continuous operations like Chinese text input. Press `Ctrl+Alt+Z` to exit anytime.
+
+### 🔍 Coordinate Reading Aids
+- Marker points on coordinate grids for AI to preview coordinates before executing operations
+- Crop & zoom interface to enlarge specific areas of screenshots for easier coordinate reading
+
+### 🎛️ Harness Engineering
+- **Round-based self-check**: Every N screenshot operations, forces AI to stop and read self-check documentation via API error, reloading critical context to prevent instruction drift in long sessions
+- **Self-check input validation**: AI must input content meeting minimum character count and user-configured keywords to pass; server-side deduplication prevents AI from skipping the process
+- **Custom self-check documents**: Self-check content is fully customizable, not limited to ScreenClaw — can enforce AI to reload any critical information
 
 ---
 
@@ -130,6 +140,7 @@ npx skills add GinSing1226/ScreenClaw
 | `drag` | Drag and drop operations | File dragging, element dragging with speed control |
 | `mouse_move` | Relative mouse movement | Game camera control, hijack/delegated only |
 | `scroll_screenshot` | Scrolling long screenshot | Auto-scroll stitching for long images |
+| `crop_zoom_screenshot` | Crop & zoom | Enlarge specific area of existing screenshot |
 | `delegated` | Enter/Exit delegated mode | User requests full computer control |
 
 ---
@@ -179,14 +190,19 @@ curl -X POST http://127.0.0.1:12261/api/screenshot \
     "main_window_id": 1001,
     "coordinate_type": "grid",
     "color_mode": "grayscale",
-    "density": 5.0,
-    "opacity": 50,
-    "color": "#ff0000",
-    "number_density": 2,
-    "number_decimal": 0,
-    "number_size": 12,
-    "number_color": "#ff0000",
-    "number_opacity": 100
+    "grid": {
+      "density_x": 5.0,
+      "density_y": 5.0,
+      "opacity": 50,
+      "color": "#ff0000"
+    },
+    "coordinate": {
+      "number_density": 2,
+      "number_decimal": 1,
+      "number_size": 14,
+      "number_color": "#ff0000",
+      "number_opacity": 100
+    }
   }'
 ```
 
@@ -341,7 +357,8 @@ curl -X POST http://127.0.0.1:12261/api/wait \
     "ai_app_type": "claude_code",
     "session_id": "session-123",
     "window_id": 1001,
-    "duration_ms": 1000
+    "duration_ms": 1000,
+    "random_range": 300
   }'
 ```
 
@@ -401,6 +418,8 @@ curl -X POST http://127.0.0.1:12261/api/drag \
   }'
 ```
 
+Cross-window drag (optional `target_window_id`, `target_main_window_id`; `end_x`/`end_y` relative to target window).
+
 ### 16. Mouse Move
 
 ```bash
@@ -419,7 +438,25 @@ curl -X POST http://127.0.0.1:12261/api/mouse_move \
   }'
 ```
 
-### 17. Scroll Screenshot
+### 17. Crop & Zoom
+
+```bash
+curl -X POST http://127.0.0.1:12261/api/crop_zoom_screenshot \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ai_app_type": "claude_code",
+    "session_id": "session-123",
+    "source_image_path": "D:/screenClaw/data/claude_code__session-123/screenshot_143215.png",
+    "center_x": 55.0,
+    "center_y": 65.0,
+    "crop_width": 20,
+    "crop_height": 20,
+    "zoom_scale": 2.0
+  }'
+```
+
+### 18. Scroll Screenshot
 
 ```bash
 curl -X POST http://127.0.0.1:12261/api/scroll_screenshot \
@@ -604,6 +641,7 @@ Located at `{skill-dir}/references/config.md`, for AI applications to connect to
 - 🎯 **Improve Recognition Accuracy** — Enhance first-time recognition through skill optimization and scenario template accumulation
 - 🔄 **More RPA Actions** — Expand supported automation types to cover more use cases
 - 🖥️ **Desktop-Level Operation** — Capture and operate directly on the desktop without binding to specific processes, works with any visible content (will seize user's mouse and keyboard)
+- 🧠 **Coordinate Accuracy Improvement** — Leverage lightweight OCR or accessibility tree technology to further improve coordinate accuracy
 - 📦 **Scenario Template Library** — Package more templates for common software, ready to use out-of-the-box
 
 ---

@@ -1,98 +1,86 @@
 ---
 name: batch
-description: 批量连续执行多条指令，按顺序执行。适用：需要执行多个连续操作、操作步骤固定无需中间决策、执行已沉淀的场景模板。不适用：单步操作（用对应API）、需要根据前一步结果动态决策（逐步调用API）。
+description: 批量连续执行多条指令，适用于稳定流程、固定坐标流程、操作后需要立刻截图的流程。不适用于需要根据前一步结果动态决策的探索阶段。
 ---
 
 # batch - 批量执行
 
-## 请求
+## 快速决策
 
-**方法**：POST `/api/batch`
+- 探索阶段用单步 API，方便读图和调整。
+- 流程稳定后再用 batch。
+- hover、右键菜单、长按菜单、操作后瞬间状态等易丢失场景，适合在 batch 中接 `wait` 和 `screenshot`。
+- batch 中多个 screenshot 对自检计数最多算 1 次。
+- batch 失败会中断，查看 results 中已执行步骤和失败 message。
+- `scroll_screenshot` 不支持 batch。
 
-**请求头**：
+## 脚本调用
+
+点击、等待、截图：
+
+```bash
+python scripts/screenclaw.py batch api_url={api_url} token={token} ai_app_type={ai_app_type} session_id={session_id} window_id={window_id} main_window_id={main_window_id} step.0.action=click step.0.params.x=50 step.0.params.y=35 step.1.action=wait step.1.params.duration_ms=300 step.2.action=screenshot step.2.params.coordinate_type=grid
 ```
-Authorization: Bearer {token}
-Content-Type: application/json
+
+hover 后立刻观察隐藏 UI：
+
+```bash
+python scripts/screenclaw.py batch api_url={api_url} token={token} ai_app_type={ai_app_type} session_id={session_id} window_id={window_id} main_window_id={main_window_id} step.0.action=hover step.0.params.x=50 step.0.params.y=35 step.1.action=wait step.1.params.duration_ms=300 step.2.action=screenshot step.2.params.coordinate_type=no
 ```
 
-### 请求参数
+batch 内截图自检：
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `ai_app_type` | string | 是 | - | AI应用类型 |
-| `session_id` | string | 是 | - | 会话唯一标识 |
-| `window_id` | int | 是 | - | 目标窗口句柄 |
-| `main_window_id` | int | 是 | - | 主窗口ID |
-| `instructions` | array | 是 | - | 多条单操作的指令列表 |
+```bash
+python scripts/screenclaw.py batch api_url={api_url} token={token} ai_app_type={ai_app_type} session_id={session_id} window_id={window_id} main_window_id={main_window_id} step.0.action=screenshot step.0.params.coordinate_type=grid step.0.params.self_check="{按 references/self_check.md 复述的内容}"
+```
 
-### instructions 结构
+## 请求参数
 
-每条指令包含：
-- `action`：指令类型
-- `params`：指令参数（与单独调用该API时的参数相同）
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `ai_app_type` | string | 是 | AI 应用类型 |
+| `session_id` | string | 是 | 会话唯一标识 |
+| `window_id` | int | 是 | 默认目标窗口句柄 |
+| `main_window_id` | int | 是 | 默认主窗口 ID |
+| `instructions` | array | 是 | 脚本中用 `step.N.action` 和 `step.N.params.*` 表达 |
 
-**支持的指令类型**：
+## 支持的 action
 
-| 指令 | 说明 |
-|------|------|
+| action | 说明 |
+|--------|------|
 | `click` | 点击 |
 | `long_press` | 长按 |
 | `swipe` | 滑动 |
-| `drag` | 拖拽（支持跨窗口：target_window_id/target_main_window_id） |
+| `drag` | 拖拽 |
 | `scroll` | 滚动 |
-| `right_click` | 右键点击 |
-| `hover` | 鼠标悬浮 |
-| `mouse_move` | 鼠标移动（游戏视角控制） |
+| `right_click` | 右键 |
+| `hover` | 悬浮 |
+| `mouse_move` | 游戏视角移动 |
 | `input_text` | 输入文本 |
 | `press_key` | 按键 |
 | `wait` | 等待 |
-| `screenshot` | 截图（数据在响应results中返回） |
-| `crop_zoom_screenshot` | 裁剪放大已有截图局部（不需要window_id） |
+| `screenshot` | 截图，结果在 results 中返回 |
+| `crop_zoom_screenshot` | 裁剪放大已有截图 |
 
-**注意**：`scroll_screenshot`（滚动长截图）不支持 batch，请单独调用。
+## 点号路径规则
 
-### 请求示例
+| 含义 | 点号路径 |
+|------|----------|
+| 第 0 步动作 | `step.0.action=click` |
+| 第 0 步参数 x | `step.0.params.x=50` |
+| 第 2 步截图无网格 | `step.2.params.coordinate_type=no` |
+| 第 2 步 marker | `step.2.params.marker.0.x=55 step.2.params.marker.0.y=65` |
 
-```json
-{
-  "ai_app_type": "claude_code",
-  "session_id": "session-123",
-  "window_id": 1001,
-  "main_window_id": 1001,
-  "instructions": [
-    { "action": "screenshot", "params": { "coordinate_type": "grid" } },
-    { "action": "click", "params": { "x": 50, "y": 35 } },
-    { "action": "wait", "params": { "duration_ms": 300 } },
-    { "action": "screenshot", "params": { "coordinate_type": "grid", "marker": {"x": 50, "y": 35} } }
-  ]
-}
-```
+## 响应处理
 
-### 响应处理
-
-响应包含 `results` 数组，每条指令对应一个结果。batch执行失败时会中断，已执行指令的结果可查看。
-
-- **本地请求**：截图数据返回 `image_path`，直接使用
-- **远程请求**：截图数据返回 `image_base64`，需脚本处理：
-
-```bash
-python scripts/batch_results_processor.py <api_url> <token> <json_response_file>
-```
+- 响应包含 `results` 数组，每条指令对应一个结果。
+- 本地图片类结果返回 `image_path`。
+- 远程图片类结果返回 `image_base64`，统一脚本会自动落盘。
+- batch 内图片类结果同样返回 `requested_params` 和 `effective_*` 参数摘要。
 
 ## 常见问题
 
-### 问题排查
-1. **batch成功但某步效果与预期不同** → 按照 skill.md 步骤10 验证，检查该步的坐标和参数
-2. **API调用失败** → 对照各操作类型的文档检查参数格式
-
-### 操作技巧
-- **操作间添加wait**：确保UI稳定后再执行下一步
-- **使用场景模板**：已沉淀的场景模板可直接转换为batch格式
-- **失败处理**：batch失败时会中断，检查results中的失败原因
-- **操作后瞬间截图**：部分场景不能分步操作，分步会丢失焦点或页面被复原，或者需要立刻观察操作后的效果。可以操作指令后接截图指令。例如验证码场景，操作后需要立刻截图，观察距离正确结果有多大差异。hover效果，操作后需要立刻截图，才能知道hover时有什么新元素显示。
-
-### 特殊说明
-
-- **非阻塞持续时间**：指令内的 duration_ms 是非阻塞的。如 `press_key` 的 `duration_ms=10000`（按住ctrl 10秒），系统会立即执行下一条指令，但ctrl按键会持续10秒。适用于按住ctrl多选文件等场景
-- **阻塞式等待**：需要暂停执行下一条指令时，使用 `wait` 指令
-- **截图指令**：batch中可包含screenshot，截图数据在响应results对应位置返回
+1. **batch 成功但结果不符合预期**：按最后一张截图验证，不要只看 success。
+2. **batch 中断**：查看 results 中最后一个失败步骤的 `error_code/message`。
+3. **前一步需要动态判断**：不要 batch，改为单步。
+4. **需要保持按键或焦点状态**：把相关动作放在同一个 batch，中间用 `wait` 控制时序。
