@@ -662,6 +662,10 @@ screenClaw/
 
 欢迎提交 Issue 和 Pull Request！
 
+## 🤝 社区
+QQ群：676692393
+<img width="217" height="227" alt="image" src="https://github.com/user-attachments/assets/3ee81a60-cc71-4463-9732-ba368fc3cb11" />
+
 ---
 
 ## 📄 许可证
