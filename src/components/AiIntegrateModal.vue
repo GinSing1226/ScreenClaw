@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import type { AppConfig } from '../composables/useConfig'
 
 const { t } = useI18n()
 
 const props = defineProps<{
   visible: boolean
+  config: AppConfig | null
+  appRoot: string
 }>()
 
 const emit = defineEmits<{
@@ -15,14 +18,18 @@ const emit = defineEmits<{
 type TabType = 'openclaw' | 'others'
 const activeTab = ref<TabType>('openclaw')
 
-const serviceUrl = ref('http://127.0.0.1:12261')
-const token = ref('your-token-here')
-const skillInstallCmd = 'npx skills add https://github.com/GinSing1226/ScreenClaw'
+const serviceUrl = computed(() => {
+  const port = props.config?.server?.port ?? 12261
+  return `http://127.0.0.1:${port}`
+})
+const token = computed(() => props.config?.server?.token || '')
+const skillInstallCmd = 'npx skills add https://github.com/GinSing1226/ScreenClaw -y -g'
 
 const openclawPrompt = computed(() => {
   return `${t('aiIntegrate.promptTitle')}
 
 # ${t('aiIntegrate.stepOne')}: ${t('aiIntegrate.stepOneTitle')}
+${t('aiIntegrate.stepOneDesc')}
 \`\`\`bash
 ${skillInstallCmd}
 \`\`\`
@@ -31,6 +38,7 @@ ${skillInstallCmd}
 ${t('aiIntegrate.stepTwoDesc')} \`${t('aiIntegrate.stepTwoConfigPath')}\`
 - ${t('aiIntegrate.serviceAddress')}: \`${serviceUrl.value}\`
 - ${t('aiIntegrate.accessToken')}: \`${token.value}\`
+- 📂 ${t('aiIntegrate.stepFourAppRoot')}：${props.appRoot}
 
 # ${t('aiIntegrate.stepThree')}：${t('aiIntegrate.stepThreeTitle')}
 ${t('aiIntegrate.stepThreeDesc')}
@@ -46,6 +54,7 @@ ${t('aiIntegrate.stepThreeDesc')}
 **${t('aiIntegrate.stepFourDesc')}**
 📍 ${t('aiIntegrate.stepFourSkillLocation')}：~/.openclaw/skills/<skill-name>
 📋 ${t('aiIntegrate.stepFourConfigFile')}：config.json ${t('aiIntegrate.stepFourConfigWritten')}
+📂 ${t('aiIntegrate.stepFourAppRoot')}：${props.appRoot}
 
 🚀 ${t('aiIntegrate.stepFourTriggerMode')}：
   - "${t('aiIntegrate.stepFourTriggerExample1')}"
@@ -71,6 +80,7 @@ const othersPrompt = computed(() => {
   return `${t('aiIntegrate.othersPromptTitle')}
 
 # ${t('aiIntegrate.othersStepOne')}: **${t('aiIntegrate.othersStepOneTitle')}**
+${t('aiIntegrate.othersStepOneDesc')}
 \`\`\`bash
 ${skillInstallCmd}
 \`\`\`
@@ -78,7 +88,8 @@ ${skillInstallCmd}
 # ${t('aiIntegrate.othersStepTwo')}：**${t('aiIntegrate.othersStepTwoTitle')}**
 ${t('aiIntegrate.othersStepTwoDesc')} \`${t('aiIntegrate.othersConfigFilePath')}\`
 - ${t('aiIntegrate.serviceAddress')}: \`${serviceUrl.value}\`
-- ${t('aiIntegrate.accessToken')}: \`${token.value}\``
+- ${t('aiIntegrate.accessToken')}: \`${token.value}\`
+📂 ${t('aiIntegrate.othersAppRoot')}：${props.appRoot}`
 })
 
 const currentPrompt = computed(() => {

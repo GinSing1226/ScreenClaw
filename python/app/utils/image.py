@@ -222,6 +222,20 @@ def generate_scroll_screenshot_filename() -> str:
     return f"scroll_screenshot_{time_str}_{rand_str}.png"
 
 
+def generate_desktop_screenshot_filename() -> str:
+    """
+    生成桌面截图文件名
+
+    格式: desktop_hhmmss_rand4.png
+
+    Returns:
+        文件名
+    """
+    time_str = datetime.now().strftime("%H%M%S")
+    rand_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
+    return f"desktop_{time_str}_{rand_str}.png"
+
+
 def generate_crop_zoom_filename() -> str:
     """
     生成裁剪放大图片文件名

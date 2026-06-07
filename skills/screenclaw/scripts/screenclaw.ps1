@@ -6,7 +6,7 @@ param(
 function Parse-Value($Key, $Value) {
     if ($Value -eq 'true') { return $true }
     if ($Value -eq 'false') { return $false }
-    if ($Key -notin @('text','key','keyword','action','newline_key','api_url','token','ai_app_type','session_id','source_image_path','self_check')) {
+    if ($Key -notin @('text','key','keys','keyword','action','newline_key','api_url','token','ai_app_type','session_id','source_image_path','self_check')) {
         if ($Value -match '^-?\d+$') { return [int]$Value }
         if ($Value -match '^-?\d+\.\d+$') { return [double]$Value }
     }
@@ -121,6 +121,7 @@ function Is-LocalUrl($ApiUrl) {
 function Image-Prefix($EndpointName) {
     if ($EndpointName -eq 'crop_zoom_screenshot') { return 'crop_zoom' }
     if ($EndpointName -eq 'scroll_screenshot') { return 'scroll_screenshot' }
+    if ($EndpointName -eq 'desktop_screenshot') { return 'desktop' }
     return 'screenshot'
 }
 
@@ -162,7 +163,11 @@ function Valid-Endpoints {
     return @(
         'batch','click','crop_zoom_screenshot','delegated','drag','get_window_list','health',
         'hover','input_text','long_press','mouse_move','press_key','right_click','screenshot',
-        'scroll','scroll_screenshot','swipe','wait'
+        'scroll','scroll_screenshot','swipe','wait',
+        'desktop_get_monitors_list','desktop_screenshot',
+        'desktop_click','desktop_double_click','desktop_right_click',
+        'desktop_drag','desktop_scroll',
+        'desktop_input_text','desktop_press_key','desktop_hover'
     )
 }
 
@@ -177,26 +182,38 @@ function Validate-Endpoint($EndpointName) {
 }
 
 function Endpoint-AllowedKeys($EndpointName) {
-    $common = @('ai_app_type','session_id','window_id','main_window_id')
+    $windowCommon = @('ai_app_type','session_id','window_id','main_window_id')
+    $desktopCommon = @('ai_app_type','session_id')
+    $batchTop = @('ai_app_type','session_id')
     switch ($EndpointName) {
-        'health' { return $common }
-        'get_window_list' { return $common + @('keyword','include_children','children_filter') }
-        'delegated' { return $common + @('action') }
-        'screenshot' { return $common + @('coordinate_type','color_mode','grid','coordinate','marker','self_check') }
-        'crop_zoom_screenshot' { return $common + @('source_image_path','source_image_base64','center_x','center_y','crop_width','crop_height','zoom_scale') }
-        'scroll_screenshot' { return $common + @('action_method','max_scrolls','scroll_percent','scroll_wait','x','y','max_adjust_retries','target_overlap_min','target_overlap_max','stop_threshold') }
-        'click' { return $common + @('x','y','action_method') }
-        'right_click' { return $common + @('x','y','action_method') }
-        'long_press' { return $common + @('x','y','action_method','duration_ms') }
-        'hover' { return $common + @('x','y','action_method','duration_ms') }
-        'swipe' { return $common + @('start_x','start_y','end_x','end_y','action_method') }
-        'drag' { return $common + @('start_x','start_y','end_x','end_y','duration_ms','action_method','target_window_id','target_main_window_id') }
-        'scroll' { return $common + @('x','y','delta','action_method') }
-        'mouse_move' { return $common + @('delta_x','delta_y','duration_ms','action_method') }
-        'input_text' { return $common + @('x','y','text','newline_key','action_method') }
-        'press_key' { return $common + @('key','x','y','duration_ms','action_method') }
-        'wait' { return $common + @('duration_ms','random_range') }
-        'batch' { return $common + @('step','instructions') }
+        'health' { return $windowCommon }
+        'get_window_list' { return $windowCommon + @('keyword','include_children','children_filter') }
+        'delegated' { return $windowCommon + @('action') }
+        'screenshot' { return $windowCommon + @('coordinate_type','color_mode','grid','coordinate','marker','self_check') }
+        'crop_zoom_screenshot' { return $windowCommon + @('source_image_path','source_image_base64','center_x','center_y','crop_width','crop_height','zoom_scale') }
+        'scroll_screenshot' { return $windowCommon + @('action_method','max_scrolls','scroll_percent','scroll_wait','x','y','max_adjust_retries','target_overlap_min','target_overlap_max','stop_threshold') }
+        'click' { return $windowCommon + @('x','y','action_method') }
+        'right_click' { return $windowCommon + @('x','y','action_method') }
+        'long_press' { return $windowCommon + @('x','y','action_method','duration_ms') }
+        'hover' { return $windowCommon + @('x','y','action_method','duration_ms') }
+        'swipe' { return $windowCommon + @('start_x','start_y','end_x','end_y','action_method') }
+        'drag' { return $windowCommon + @('start_x','start_y','end_x','end_y','duration_ms','action_method','target_window_id','target_main_window_id') }
+        'scroll' { return $windowCommon + @('x','y','delta','action_method') }
+        'mouse_move' { return $windowCommon + @('delta_x','delta_y','duration_ms','action_method') }
+        'input_text' { return $windowCommon + @('x','y','text','newline_key','action_method') }
+        'press_key' { return $windowCommon + @('key','x','y','duration_ms','action_method') }
+        'wait' { return $windowCommon + @('duration_ms','random_range') }
+        'batch' { return $batchTop + @('step','instructions') }
+        'desktop_get_monitors_list' { return $desktopCommon }
+        'desktop_screenshot' { return $desktopCommon + @('monitor_index','coordinate_type','color_mode','grid','coordinate','marker','self_check') }
+        'desktop_click' { return $desktopCommon + @('monitor_index','x','y') }
+        'desktop_double_click' { return $desktopCommon + @('monitor_index','x','y') }
+        'desktop_right_click' { return $desktopCommon + @('monitor_index','x','y') }
+        'desktop_drag' { return $desktopCommon + @('monitor_index','start_x','start_y','end_monitor_index','end_x','end_y','duration_ms') }
+        'desktop_scroll' { return $desktopCommon + @('monitor_index','x','y','delta') }
+        'desktop_input_text' { return $desktopCommon + @('monitor_index','x','y','text') }
+        'desktop_press_key' { return $desktopCommon + @('monitor_index','keys','x','y','duration_ms') }
+        'desktop_hover' { return $desktopCommon + @('monitor_index','x','y','duration_ms') }
     }
 }
 
@@ -225,30 +242,31 @@ function Validate-Params($EndpointName, [hashtable]$Body) {
             throw "unknown parameter '$EndpointName.$key' for endpoint '$EndpointName'. Next: read skill.md and $(Endpoint-Doc $EndpointName)."
         }
     }
-    if ($EndpointName -eq 'screenshot') {
-        if ($Body.ContainsKey('grid')) { Validate-NestedKeys $EndpointName $Body['grid'] @('density_x','density_y','opacity','color') 'screenshot.grid' }
+    if ($EndpointName -in @('screenshot','desktop_screenshot')) {
+        if ($Body.ContainsKey('grid')) { Validate-NestedKeys $EndpointName $Body['grid'] @('density_x','density_y','opacity','color') "$EndpointName.grid" }
         if ($Body.ContainsKey('coordinate')) {
-            Validate-NestedKeys $EndpointName $Body['coordinate'] @('number_density','number_decimal','number_size','number_color','number_opacity','number_stroke_width','number_stroke_color') 'screenshot.coordinate'
+            Validate-NestedKeys $EndpointName $Body['coordinate'] @('number_density','number_decimal','number_size','number_color','number_opacity','number_stroke_width','number_stroke_color') "$EndpointName.coordinate"
         }
         if ($Body.ContainsKey('marker')) {
-            Validate-NestedKeys $EndpointName $Body['marker'] @('x','y','ring_radius','ring_line_width','ring_color','dot_radius','dot_color') 'screenshot.marker'
+            Validate-NestedKeys $EndpointName $Body['marker'] @('x','y','ring_radius','ring_line_width','ring_color','dot_radius','dot_color') "$EndpointName.marker"
         }
     }
     if ($EndpointName -eq 'batch' -and $Body.ContainsKey('instructions')) {
         $idx = 0
         foreach ($instruction in $Body['instructions']) {
             $action = $instruction['action']
-            if ($action -notin (Valid-Endpoints) -or $action -in @('health','batch')) {
+            if ($action -notin (Valid-Endpoints) -or $action -in @('health','batch','desktop_get_monitors_list')) {
                 throw "unknown batch action '$action'. Next: read skill.md and references/api/batch.md."
             }
             $params = if ($instruction.ContainsKey('params')) { $instruction['params'] } else { @{} }
-            $stepAllowed = (Endpoint-AllowedKeys $action) | Where-Object { $_ -notin @('ai_app_type','session_id','window_id','main_window_id') }
+            $allCommon = @('ai_app_type','session_id','window_id','main_window_id')
+            $stepAllowed = @((Endpoint-AllowedKeys $action) | Where-Object { $_ -notin $allCommon }) + @('window_id','main_window_id')
             foreach ($key in $params.Keys) {
                 if ($key -notin $stepAllowed) {
                     throw "unknown parameter 'step.$idx.params.$key' for endpoint '$action'. Next: read skill.md and $(Endpoint-Doc $action)."
                 }
             }
-            if ($action -eq 'screenshot') {
+            if ($action -in @('screenshot','desktop_screenshot')) {
                 if ($params.ContainsKey('grid')) { Validate-NestedKeys $action $params['grid'] @('density_x','density_y','opacity','color') "step.$idx.params.grid" }
                 if ($params.ContainsKey('coordinate')) {
                     Validate-NestedKeys $action $params['coordinate'] @('number_density','number_decimal','number_size','number_color','number_opacity','number_stroke_width','number_stroke_color') "step.$idx.params.coordinate"
@@ -323,21 +341,27 @@ try {
     $body.Remove('api_url')
     $body.Remove('token')
 
-    if ($Endpoint -ne 'health') {
+    if ($Endpoint -ne 'health' -and $Endpoint -ne 'desktop_get_monitors_list') {
         foreach ($required in @('ai_app_type','session_id')) {
             if (-not $body.ContainsKey($required)) { throw "$required is required" }
         }
     }
+    $desktopEndpoints = @('desktop_get_monitors_list','desktop_screenshot','desktop_click','desktop_double_click','desktop_right_click','desktop_drag','desktop_scroll','desktop_input_text','desktop_press_key','desktop_hover')
     $windowExempt = @('health','get_window_list','delegated','crop_zoom_screenshot')
-    if ($Endpoint -notin $windowExempt -and -not $body.ContainsKey('window_id')) { throw "window_id is required" }
-    if ($Endpoint -notin $windowExempt -and $Endpoint -ne 'wait' -and -not $body.ContainsKey('main_window_id')) { throw "main_window_id is required" }
+    if ($Endpoint -notin $windowExempt -and $Endpoint -notin $desktopEndpoints -and $Endpoint -ne 'batch') {
+        if (-not $body.ContainsKey('window_id')) { throw "window_id is required" }
+        if ($Endpoint -ne 'wait' -and -not $body.ContainsKey('main_window_id')) { throw "main_window_id is required" }
+    }
+    if ($desktopEndpoints -contains $Endpoint -and $Endpoint -ne 'desktop_get_monitors_list') {
+        if (-not $body.ContainsKey('monitor_index')) { throw "monitor_index is required" }
+    }
     if ($Endpoint -eq 'batch') { $body = Convert-BatchSteps $body }
     Validate-Params $Endpoint $body
     Prepare-RemoteCropInput $Endpoint $apiUrl $body
 
     $headers = @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" }
     $url = "$apiUrl/api/$Endpoint"
-    if ($Endpoint -eq 'health') {
+    if ($Endpoint -in @('health','desktop_get_monitors_list')) {
         $response = Invoke-RestMethod -Uri $url -Method Get -Headers $headers
     } else {
         $jsonBody = $body | ConvertTo-Json -Depth 20 -Compress
@@ -351,7 +375,7 @@ try {
         exit 1
     }
 
-    if ($Endpoint -in @('screenshot','scroll_screenshot','crop_zoom_screenshot')) {
+    if ($Endpoint -in @('screenshot','scroll_screenshot','crop_zoom_screenshot','desktop_screenshot')) {
         $path = Materialize-ImageData $Endpoint $response.data $body
         if ($path) { Write-Output $path }
         if ($response.message) { Write-Output $response.message }

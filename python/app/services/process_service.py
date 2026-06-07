@@ -4,7 +4,6 @@
 """
 import os
 from typing import List, Optional, Tuple
-from functools import lru_cache
 
 import win32gui
 import win32process
@@ -16,9 +15,6 @@ from app.models.response import ProcessInfo, ChildWindow
 
 class ProcessService:
     """进程管理服务"""
-
-    # 进程名缓存大小
-    _PROCESS_NAME_CACHE_SIZE = 256
 
     # 常见的渲染窗口类名
     RENDER_WINDOW_CLASSES = [
@@ -60,7 +56,7 @@ class ProcessService:
             # 获取进程ID
             _, process_id = win32process.GetWindowThreadProcessId(hwnd)
 
-            # 获取进程名（失败时标记为空，窗口仍保留在列表中）
+            # 获取进程名（失败时置空，窗口仍保留在列表中）
             process_name = self._get_process_name_impl(process_id) or ""
 
             # 关键词过滤
@@ -124,41 +120,70 @@ class ProcessService:
 
         return children
 
-    @lru_cache(maxsize=_PROCESS_NAME_CACHE_SIZE)
+    # 进程名查询内部缓存（仅缓存成功结果，None 不缓存）
+    _name_cache: dict = {}  # pid -> process_name
+
     def _get_process_name_impl(self, process_id: int) -> Optional[str]:
-        """获取进程名（使用最小权限，避免触发反作弊拦截）"""
+        """获取进程名
+
+        使用 OpenProcess + QueryFullProcessImageNameW（最小权限）。
+        获取不到时返回 None（受保护/系统进程），调用方用 or "" 置空。
+        不使用 ntdll 内核查询，避免系统进程被错误归为应用进程。
+        """
+        # 查缓存
+        cached = self._name_cache.get(process_id)
+        if cached is not None:
+            return cached
+
+        name = self._query_via_win32(process_id)
+        if name:
+            self._name_cache[process_id] = name
+            return name
+
+        # 不缓存 None（进程可能尚未启动，后续再查可能成功）
+        return None
+
+    def _query_via_win32(self, process_id: int) -> Optional[str]:
+        """OpenProcess + QueryFullProcessImageNameW
+
+        需要 PROCESS_QUERY_LIMITED_INFORMATION 权限。
+        获取不到返回 None（受保护/系统进程）。
+        """
         try:
-            from ctypes import windll, wintypes, create_unicode_buffer
+            import ctypes
+            from ctypes import windll, wintypes, create_unicode_buffer, c_void_p
 
-            # 方案A：PROCESS_QUERY_LIMITED_INFORMATION — 最小权限，仅查询路径
             PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-
             handle = win32api.OpenProcess(
                 PROCESS_QUERY_LIMITED_INFORMATION,
                 False,
                 process_id
             )
-
             if not handle:
                 return None
-
             try:
-                # QueryFullProcessImageNameW 仅需 LIMITED_INFORMATION 权限
+                # PyHANDLE → c_void_p，确保 64 位下不被截断为 4 字节 c_int
+                handle_ptr = c_void_p(int(handle))
                 size = wintypes.DWORD(260)
                 buf = create_unicode_buffer(size.value)
-                windll.kernel32.QueryFullProcessImageNameW(
-                    handle, 0, buf, size
+                windll.kernel32.QueryFullProcessImageNameW.argtypes = [
+                    c_void_p, wintypes.DWORD, ctypes.c_wchar_p, ctypes.POINTER(wintypes.DWORD)
+                ]
+                windll.kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+                result = windll.kernel32.QueryFullProcessImageNameW(
+                    handle_ptr, 0, buf, ctypes.byref(size)
                 )
-                return os.path.basename(buf.value)
+                if not result:
+                    return None
+                return os.path.basename(buf.value) if buf.value else None
             finally:
                 win32api.CloseHandle(handle)
-
         except Exception:
             return None
 
     def clear_cache(self):
         """清除进程名缓存"""
-        self._get_process_name_impl.cache_clear()
+        self._name_cache.clear()
 
     def get_window_rect(self, hwnd: int) -> Optional[Tuple[int, int, int, int]]:
         """获取窗口矩形"""

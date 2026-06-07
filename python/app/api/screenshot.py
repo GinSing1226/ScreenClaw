@@ -14,7 +14,7 @@ from app.models.response import (
 from app.services.config_service import config_service
 from app.services.process_service import process_service
 from app.services.log_service import log_service
-from app.services.screenshot_params_service import screenshot_params_service
+from app.services.screenshot_params_service import screenshot_params_service, strip_defaults, strip_response_params, grid_defaults, coordinate_defaults, marker_defaults
 from app.services.self_check_service import self_check_service
 from app.platform.windows.capture import windows_capture
 from app.core.grid import GridRenderer
@@ -81,7 +81,7 @@ def _effective_screenshot_params(
     return params
 
 
-@router.post("/screenshot")
+@router.post("/screenshot", response_model=ScreenshotResponse, response_model_exclude_none=True)
 async def take_screenshot(
     request: ScreenshotRequest,
     req: Request = None,
@@ -179,6 +179,16 @@ async def take_screenshot(
 
     image = result.image
 
+    # 窗口原始信息（压缩前记录）
+    import ctypes
+    window_dpi = ctypes.windll.user32.GetDpiForWindow(request.window_id)
+    scale_factor = round(window_dpi / 96.0, 2)
+    window_info = {
+        "source_width": image.size[0],
+        "source_height": image.size[1],
+        "scale_factor": scale_factor,
+    }
+
     # 压缩图片（先压缩到最终输出尺寸，再绘制网格/标记）
     image = compress_image(
         image,
@@ -267,27 +277,44 @@ async def take_screenshot(
         effective_coordinate,
         effective_marker,
     )
+
+    # 过滤与 config 默认值相同的字段，减少响应 token
+    grid_def = grid_defaults(config)
+    coord_def = coordinate_defaults(config)
+    marker_def = marker_defaults(config)
+    filtered_grid = strip_defaults(effective_grid, grid_def)
+    filtered_coordinate = strip_defaults(effective_coordinate, coord_def)
+    filtered_marker = (
+        [strip_defaults(m, marker_def) for m in effective_marker]
+        if effective_marker else None
+    )
+    filtered_adjustments = adaptive_adjustments if adaptive_adjustments else None
+    filtered_requested_params = strip_response_params(requested_params, config)
+    filtered_effective_params = strip_response_params(effective_params, config)
+
     if is_local:
         # 本地：只返回路径，减少上下文
         screenshot_data = ScreenshotData(
             image_path=os.path.abspath(image_path),
-            requested_params=requested_params,
-            effective_params=effective_params,
-            effective_grid=effective_grid,
-            effective_coordinate=effective_coordinate,
-            effective_marker=effective_marker,
-            adaptive_adjustments=adaptive_adjustments
+            window_info=window_info,
+            requested_params=filtered_requested_params,
+            effective_params=filtered_effective_params,
+            effective_grid=filtered_grid,
+            effective_coordinate=filtered_coordinate,
+            effective_marker=filtered_marker,
+            adaptive_adjustments=filtered_adjustments
         )
     else:
         # 远程：只返回base64
         screenshot_data = ScreenshotData(
             image_base64=image_base64,
-            requested_params=requested_params,
-            effective_params=effective_params,
-            effective_grid=effective_grid,
-            effective_coordinate=effective_coordinate,
-            effective_marker=effective_marker,
-            adaptive_adjustments=adaptive_adjustments
+            window_info=window_info,
+            requested_params=filtered_requested_params,
+            effective_params=filtered_effective_params,
+            effective_grid=filtered_grid,
+            effective_coordinate=filtered_coordinate,
+            effective_marker=filtered_marker,
+            adaptive_adjustments=filtered_adjustments
         )
 
     # 成功消息

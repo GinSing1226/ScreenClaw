@@ -2029,6 +2029,14 @@ time.sleep(0.05)
 
     # ============ 辅助方法 ============
 
+    # 子进程 DPI 感知前缀：确保子进程与父进程使用同一套屏幕坐标系
+    # 父进程因 mss 初始化而成为 DPI-aware，ClientToScreen/SetCursorPos 返回物理坐标
+    # 子进程默认 DPI-unaware，会将物理坐标当虚拟坐标处理，导致 4K/150% 下坐标偏移 1.5×
+    _DPI_AWARENESS_PREFIX = (
+        "import ctypes; "
+        "ctypes.windll.shcore.SetProcessDpiAwareness(2); "
+    )
+
     def _run_subprocess(self, code: str, timeout: int = 5,
                         non_blocking: bool = False, semi_blocking: bool = False) -> bool:
         """在子进程中执行代码
@@ -2046,12 +2054,19 @@ time.sleep(0.05)
             非阻塞模式下返回 True 仅表示"消息已投递"，不代表目标窗口已完成操作。
             _last_error 捕获的是子进程自身的启动/执行错误，不是目标窗口的响应。
 
+            DPI 感知：子进程注入 SetProcessDpiAwareness(2)，确保 SetCursorPos
+            使用物理坐标系，与父进程 ClientToScreen 返回的物理坐标一致。
+
         嵌入式 Python 配置:
             - python313._pth 文件控制模块搜索路径（包含 pyperclip）
             - PATH 环境变量确保 DLL 可被找到（pywintypes313.dll, pythoncom313.dll）
             - PYTHONIOENCODING 避免编码问题
         """
         self._last_error = None
+
+        # 注入 DPI 感知，使子进程使用物理坐标（与父进程一致）
+        code = self._DPI_AWARENESS_PREFIX + code
+
         is_frozen = getattr(sys, 'frozen', False)
 
         if is_frozen:

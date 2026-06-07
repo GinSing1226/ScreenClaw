@@ -68,6 +68,17 @@ export interface AppConfig {
     doc_path: string
     keywords: string[][]
   }
+  recording?: {
+    hotkey: string
+    scroll_merge_interval_ms: number
+    marker: {
+      ring_radius: number
+      ring_line_width: number
+      ring_color: string
+      dot_radius: number
+      dot_color: string
+    }
+  }
 }
 
 export interface SettingsForm {
@@ -115,6 +126,9 @@ export interface SettingsForm {
   selfCheckMinChars: number
   selfCheckDocPath: string
   selfCheckKeywords: string
+  // 操作录制
+  recordingHotkey: string
+  recordingScrollMergeInterval: number
 }
 
 const config = ref<AppConfig | null>(null)
@@ -162,7 +176,10 @@ const settingsForm = ref<SettingsForm>({
   selfCheckInterval: 10,
   selfCheckMinChars: 80,
   selfCheckDocPath: 'skills/screenclaw/references/self_check.md',
-  selfCheckKeywords: 'grid intersection, do not infer coordinates\ncrop zoom, marker verification\nscreenshot verification, after operation\n网格交叉点, 不能推测坐标\n裁剪放大, 标记点验证\n截图验证, 操作后'
+  selfCheckKeywords: 'grid intersection, do not infer coordinates\ncrop zoom, marker verification\nscreenshot verification, after operation\n网格交叉点, 不能推测坐标\n裁剪放大, 标记点验证\n截图验证, 操作后',
+  // 操作录制
+  recordingHotkey: 'ctrl+alt+\\',
+  recordingScrollMergeInterval: 1000,
 })
 
 const configSaving = ref(false)
@@ -237,7 +254,10 @@ export function useConfig() {
           ['网格交叉点', '不能推测坐标'],
           ['裁剪放大', '标记点验证'],
           ['截图验证', '操作后']
-        ])
+        ]),
+        // 操作录制
+        recordingHotkey: result.recording?.hotkey || 'ctrl+alt+\\',
+        recordingScrollMergeInterval: result.recording?.scroll_merge_interval_ms ?? 1000,
       }
     } catch (error) {
       console.error('Failed to load config:', error)
@@ -320,6 +340,10 @@ export function useConfig() {
           min_chars: settingsForm.value.selfCheckMinChars,
           doc_path: settingsForm.value.selfCheckDocPath,
           keywords: parseKeywordGroups(settingsForm.value.selfCheckKeywords)
+        },
+        recording: {
+          hotkey: settingsForm.value.recordingHotkey,
+          scroll_merge_interval_ms: settingsForm.value.recordingScrollMergeInterval,
         }
       }
       await invoke('update_config', { newConfig })
@@ -378,7 +402,10 @@ export function useConfig() {
         selfCheckInterval: 10,
         selfCheckMinChars: 80,
         selfCheckDocPath: 'skills/screenclaw/references/self_check.md',
-        selfCheckKeywords: 'grid intersection, do not infer coordinates\ncrop zoom, marker verification\nscreenshot verification, after operation\n网格交叉点, 不能推测坐标\n裁剪放大, 标记点验证\n截图验证, 操作后'
+        selfCheckKeywords: 'grid intersection, do not infer coordinates\ncrop zoom, marker verification\nscreenshot verification, after operation\n网格交叉点, 不能推测坐标\n裁剪放大, 标记点验证\n截图验证, 操作后',
+        // 操作录制
+        recordingHotkey: 'ctrl+alt+\\',
+        recordingScrollMergeInterval: 1000,
       }
     }
   }

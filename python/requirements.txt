@@ -15,6 +15,9 @@ pywin32>=305
 pyautogui>=0.9.54
 pyperclip>=1.8.0
 
+# 桌面截图
+mss>=9.0.0
+
 # 打包
 pyinstaller>=6.0.0
 

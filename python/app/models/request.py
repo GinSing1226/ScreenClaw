@@ -209,8 +209,10 @@ class Instruction(BaseModel):
     params: Dict[str, Any] = Field(default_factory=dict, description="指令参数")
 
 
-class BatchRequest(BaseRequest):
+class BatchRequest(BaseModel):
     """组合指令请求"""
+    ai_app_type: str = Field(..., description="AI应用类型")
+    session_id: str = Field(..., description="会话ID")
     instructions: List[Instruction] = Field(..., description="指令列表")
 
 

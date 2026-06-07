@@ -179,3 +179,96 @@ class ScreenshotParamsService:
 
 
 screenshot_params_service = ScreenshotParamsService()
+
+
+# ============ 响应默认值过滤 ============
+
+def strip_defaults(data: dict, defaults: dict) -> dict | None:
+    """去掉与默认值相同的 key，如果结果为空返回 None"""
+    if not data:
+        return None
+    filtered = {k: v for k, v in data.items() if k not in defaults or v != defaults[k]}
+    return filtered if filtered else None
+
+
+def grid_defaults(config) -> dict:
+    """获取网格参数的 config 默认值映射"""
+    return {
+        "density_x": config.screenshot.default_grid_density,
+        "density_y": config.screenshot.default_grid_density,
+        "opacity": config.screenshot.default_grid_opacity,
+        "color": config.screenshot.default_grid_color,
+    }
+
+
+def coordinate_defaults(config) -> dict:
+    """获取坐标参数的 config 默认值映射"""
+    return {
+        "number_density": config.screenshot.default_number_density,
+        "number_decimal": config.screenshot.default_number_decimal,
+        "number_size": config.screenshot.default_number_size,
+        "number_color": config.screenshot.default_number_color,
+        "number_opacity": config.screenshot.default_number_opacity,
+        "number_stroke_width": config.screenshot.default_number_stroke_width,
+        "number_stroke_color": config.screenshot.default_number_stroke_color,
+    }
+
+
+def marker_defaults(config) -> dict:
+    """获取标记参数的 config 默认值映射"""
+    return {
+        "ring_radius": config.screenshot.default_marker_ring_radius,
+        "ring_line_width": config.screenshot.default_marker_ring_line_width,
+        "ring_color": config.screenshot.default_marker_ring_color,
+        "dot_radius": config.screenshot.default_marker_dot_radius,
+        "dot_color": config.screenshot.default_marker_dot_color,
+    }
+
+
+def strip_response_params(data: dict, config) -> dict | None:
+    """对 requested_params / effective_params 做默认值过滤（含嵌套的 grid/coordinate/marker）"""
+    if not data:
+        return data
+    result = dict(data)
+
+    # 顶层字段与 config 默认值对比
+    top_defaults = {
+        "coordinate_type": config.screenshot.default_coordinate_type,
+        "color_mode": config.screenshot.default_color_mode,
+        "image_quality": config.screenshot.image_quality,
+        "max_image_width": config.screenshot.max_image_width,
+    }
+    for k in list(top_defaults):
+        if k in result and result[k] == top_defaults[k]:
+            del result[k]
+
+    # 嵌套 grid
+    if "grid" in result and isinstance(result["grid"], dict):
+        filtered = strip_defaults(result["grid"], grid_defaults(config))
+        if filtered is None:
+            del result["grid"]
+        else:
+            result["grid"] = filtered
+
+    # 嵌套 coordinate
+    if "coordinate" in result and isinstance(result["coordinate"], dict):
+        filtered = strip_defaults(result["coordinate"], coordinate_defaults(config))
+        if filtered is None:
+            del result["coordinate"]
+        else:
+            result["coordinate"] = filtered
+
+    # 嵌套 marker（列表）
+    if "marker" in result and isinstance(result["marker"], list):
+        marker_def = marker_defaults(config)
+        filtered_markers = []
+        for m in result["marker"]:
+            f = strip_defaults(m, marker_def) if isinstance(m, dict) else m
+            if f is not None:
+                filtered_markers.append(f)
+        if filtered_markers:
+            result["marker"] = filtered_markers
+        else:
+            del result["marker"]
+
+    return result if result else None

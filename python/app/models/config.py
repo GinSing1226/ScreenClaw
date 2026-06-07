@@ -111,3 +111,22 @@ class AppConfig(BaseModel):
     delegated: DelegatedConfig = DelegatedConfig()
     scroll_screenshot: ScrollScreenshotConfig = ScrollScreenshotConfig()
     self_check: SelfCheckConfig = SelfCheckConfig()
+
+    # 操作录制配置（独立导入，避免循环依赖）
+    # 允许 config.json 中没有 recording 段时使用默认值
+    class Config:
+        extra = "allow"
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        # 延迟导入避免循环依赖
+        from app.models.recording import RecordingConfig
+        if not hasattr(self, '_recording_config'):
+            self._recording_config = RecordingConfig(**data.get('recording', {}))
+
+    @property
+    def recording(self):
+        if not hasattr(self, '_recording_config'):
+            from app.models.recording import RecordingConfig
+            self._recording_config = RecordingConfig()
+        return self._recording_config

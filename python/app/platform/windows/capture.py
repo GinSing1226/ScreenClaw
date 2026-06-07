@@ -89,24 +89,16 @@ class WindowsCapture:
             )
 
     def _capture_by_printwindow(self, hwnd: int) -> CaptureResult:
-        """使用 PrintWindow 截图（支持后台）"""
+        """使用 PrintWindow 截图（支持后台）
+
+        GetWindowRect 和 PrintWindow 在同一 DPI 上下文中工作，
+        返回的坐标天然匹配渲染尺寸，无需 DPI 缩放公式。
+        """
         try:
             # 获取窗口尺寸（PrintWindow 渲染整个窗口，包含边框）
             rect = win32gui.GetWindowRect(hwnd)
-            virtual_width = rect[2] - rect[0]
-            virtual_height = rect[3] - rect[1]
-
-            # 多显示器混合DPI环境下，GetWindowRect 返回的是虚拟屏幕坐标
-            # PrintWindow 渲染的尺寸取决于窗口所在显示器的 DPI
-            # - 当 WindowDPI = SystemDPI 时，渲染 Virtual 尺寸
-            # - 当 WindowDPI < SystemDPI 时，渲染 Virtual × (WindowDPI/SystemDPI)
-            system_dpi = windll.user32.GetDpiForSystem()
-            window_dpi = windll.user32.GetDpiForWindow(hwnd)
-            scale_factor = window_dpi / system_dpi
-
-            # 虚拟坐标转 PrintWindow 渲染尺寸
-            width = int(virtual_width * scale_factor)
-            height = int(virtual_height * scale_factor)
+            width = rect[2] - rect[0]
+            height = rect[3] - rect[1]
 
             if width <= 0 or height <= 0:
                 return CaptureResult(

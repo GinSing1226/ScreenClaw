@@ -81,6 +81,15 @@ pub async fn get_service_status(
     })
 }
 
+/// 获取应用根目录（打包后为 exe 所在目录）
+#[tauri::command]
+pub async fn get_app_root() -> Result<String, String> {
+    let root = get_project_root();
+    root.to_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "Failed to convert app root path to string".to_string())
+}
+
 /// 获取配置
 #[tauri::command]
 pub async fn get_config(

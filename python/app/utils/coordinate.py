@@ -122,25 +122,32 @@ def restore_window_and_calc_coords(hwnd: int, x_pct: float, y_pct: float, main_w
             win32gui.ShowWindow(main_window_id, win32con.SW_SHOW)
             time.sleep(0.3)
 
-    # 获取窗口矩形
+    # 获取窗口矩形（DPI-aware 进程中 GetWindowRect 返回物理坐标，无需 DPI 转换）
     window_rect = process_service.get_window_rect(hwnd)
 
     if not window_rect:
         return None
 
-    virtual_width = window_rect[2] - window_rect[0]
-    virtual_height = window_rect[3] - window_rect[1]
+    win_w = window_rect[2] - window_rect[0]
+    win_h = window_rect[3] - window_rect[1]
 
-    system_dpi = ctypes.windll.user32.GetDpiForSystem()
-    window_dpi = ctypes.windll.user32.GetDpiForWindow(hwnd)
-    scale_factor = window_dpi / system_dpi if system_dpi > 0 else 1.0
+    # 窗口相对像素位置（百分比 → 像素，参考系为整个窗口含标题栏）
+    win_rel_x = int(win_w * x_pct / 100)
+    win_rel_y = int(win_h * y_pct / 100)
 
-    physical_width = int(virtual_width * scale_factor)
-    physical_height = int(virtual_height * scale_factor)
+    # physical_x/y 保持为窗口相对偏移（已弃用但保持接口兼容）
+    physical_x = win_rel_x
+    physical_y = win_rel_y
 
-    physical_x = int(physical_width * x_pct / 100)
-    physical_y = int(physical_height * y_pct / 100)
-    virtual_x = int(virtual_width * x_pct / 100)
-    virtual_y = int(virtual_height * y_pct / 100)
+    # 客户区偏移（标题栏 + 窗口边框）
+    # 录制时百分比是相对整个窗口（GetWindowRect），但 ClientToScreen / PostMessage
+    # 期望客户区相对坐标，需要减去标题栏和边框的高度
+    client_origin = win32gui.ClientToScreen(hwnd, (0, 0))
+    client_offset_x = client_origin[0] - window_rect[0]
+    client_offset_y = client_origin[1] - window_rect[1]
+
+    # virtual_x/y: 客户区相对坐标（用于 ClientToScreen / PostMessage lParam）
+    virtual_x = win_rel_x - client_offset_x
+    virtual_y = win_rel_y - client_offset_y
 
     return physical_x, physical_y, virtual_x, virtual_y

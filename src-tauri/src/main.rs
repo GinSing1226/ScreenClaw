@@ -42,6 +42,7 @@ unsafe extern "system" fn console_ctrl_handler(ctrl_type: u32) -> i32 {
 pub struct AppState {
     pub python_process: Mutex<Option<Child>>,
     pub is_service_running: AtomicBool,
+    pub is_recording: AtomicBool,    // 录制状态
     pub config: Mutex<Config>,
     pub hotkey_thread_id: AtomicU32, // 热键监听线程ID，用于通知重新注册
 }
@@ -64,6 +65,8 @@ pub struct Config {
     pub scroll_screenshot: ScrollScreenshotConfig,
     #[serde(default)]
     pub self_check: SelfCheckConfig,
+    #[serde(default)]
+    pub recording: RecordingConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -350,6 +353,63 @@ impl Default for SelfCheckConfig {
     }
 }
 
+// ---- 录制配置 ----
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecordingMarkerConfig {
+    #[serde(default = "default_rec_marker_ring_radius")]
+    pub ring_radius: i32,
+    #[serde(default = "default_rec_marker_ring_line_width")]
+    pub ring_line_width: i32,
+    #[serde(default = "default_rec_marker_ring_color")]
+    pub ring_color: String,
+    #[serde(default = "default_rec_marker_dot_radius")]
+    pub dot_radius: i32,
+    #[serde(default = "default_rec_marker_dot_color")]
+    pub dot_color: String,
+}
+
+fn default_rec_marker_ring_radius() -> i32 { 12 }
+fn default_rec_marker_ring_line_width() -> i32 { 2 }
+fn default_rec_marker_ring_color() -> String { "#FF0000".to_string() }
+fn default_rec_marker_dot_radius() -> i32 { 3 }
+fn default_rec_marker_dot_color() -> String { "#FF0000".to_string() }
+
+impl Default for RecordingMarkerConfig {
+    fn default() -> Self {
+        RecordingMarkerConfig {
+            ring_radius: default_rec_marker_ring_radius(),
+            ring_line_width: default_rec_marker_ring_line_width(),
+            ring_color: default_rec_marker_ring_color(),
+            dot_radius: default_rec_marker_dot_radius(),
+            dot_color: default_rec_marker_dot_color(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecordingConfig {
+    #[serde(default = "default_rec_hotkey")]
+    pub hotkey: String,
+    #[serde(default = "default_scroll_merge_interval")]
+    pub scroll_merge_interval_ms: i32,
+    #[serde(default)]
+    pub marker: RecordingMarkerConfig,
+}
+
+fn default_rec_hotkey() -> String { "ctrl+alt+r".to_string() }
+fn default_scroll_merge_interval() -> i32 { 1000 }
+
+impl Default for RecordingConfig {
+    fn default() -> Self {
+        RecordingConfig {
+            hotkey: default_rec_hotkey(),
+            scroll_merge_interval_ms: default_scroll_merge_interval(),
+            marker: RecordingMarkerConfig::default(),
+        }
+    }
+}
+
 // HTTP客户端
 mod http;
 mod commands;
@@ -371,6 +431,7 @@ fn main() {
         .manage(Arc::new(AppState {
             python_process: Mutex::new(None),
             is_service_running: AtomicBool::new(false),
+            is_recording: AtomicBool::new(false),
             config: Mutex::new(Config::default()),
             hotkey_thread_id: AtomicU32::new(0),
         }))
@@ -388,22 +449,25 @@ fn main() {
             // 创建托盘菜单 - 根据语言设置和托管状态显示不同文本
             let language = config.ui.language.as_str();
             let delegated_active = config.delegated.active;
-            let (show_text, quit_text, delegated_text) = match language {
+            let (show_text, quit_text, delegated_text, record_text) = match language {
                 "zh_CN" => (
                     "显示窗口",
                     "退出",
-                    if delegated_active { "退出托管" } else { "进入托管" }
+                    if delegated_active { "退出托管" } else { "进入托管" },
+                    "开始录制",
                 ),
                 _ => (
                     "Show Window",
                     "Quit",
-                    if delegated_active { "Exit Delegated" } else { "Enter Delegated" }
+                    if delegated_active { "Exit Delegated" } else { "Enter Delegated" },
+                    "Start Recording",
                 ),
             };
             let show_item = MenuItem::with_id(app, "show", show_text, true, None::<&str>)?;
             let delegated_item = MenuItem::with_id(app, "delegated", delegated_text, true, None::<&str>)?;
+            let record_item = MenuItem::with_id(app, "record", record_text, true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", quit_text, true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_item, &delegated_item, &quit_item])?;
+            let menu = Menu::with_items(app, &[&show_item, &delegated_item, &record_item, &quit_item])?;
 
             // 选择图标
             let tray_icon = if delegated_active {
@@ -459,6 +523,28 @@ fn main() {
                                         update_delegated_ui(&app_handle, &menu_clone, new_active);
                                     }
                                     Err(e) => println!("[TRAY] Failed to call delegated API: {}", e),
+                                }
+                            });
+                        }
+                        "record" => {
+                            // 调用 Python 录制 API 切换录制状态
+                            let app_handle = app.clone();
+                            let menu_clone = menu_for_tray.clone();
+                            let state_clone = app.state::<Arc<AppState>>().inner().clone();
+                            std::thread::spawn(move || {
+                                let config_path = get_config_path();
+                                let (port, token) = read_server_config(&config_path);
+                                let is_rec = state_clone.is_recording.load(std::sync::atomic::Ordering::SeqCst);
+                                let action = if is_rec { "stop" } else { "start" };
+                                println!("[TRAY] Recording action: {}", action);
+
+                                match call_recording_api(action, port, &token) {
+                                    Ok(_) => {
+                                        let new_rec = action == "start";
+                                        state_clone.is_recording.store(new_rec, std::sync::atomic::Ordering::SeqCst);
+                                        update_recording_ui(&app_handle, &menu_clone, new_rec);
+                                    }
+                                    Err(e) => println!("[TRAY] Failed to call recording API: {}", e),
                                 }
                             });
                         }
@@ -534,6 +620,7 @@ fn main() {
             commands::update_config,
             commands::regenerate_token,
             commands::get_logs,
+            commands::get_app_root,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -636,6 +723,85 @@ fn call_delegated_api(action: &str, port: u16, token: &str) -> Result<String, St
     Ok(text)
 }
 
+/// 调用 Python 录制 API
+fn call_recording_api(action: &str, port: u16, token: &str) -> Result<String, String> {
+    let client = reqwest::blocking::Client::new();
+    let url = format!("http://127.0.0.1:{}/api/recording/{}", port, action);
+    let body = "{}";
+
+    let response = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .body(body.to_string())
+        .send()
+        .map_err(|e| format!("HTTP request failed: {}", e))?;
+
+    let status = response.status();
+    let text = response.text()
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+
+    if !status.is_success() {
+        return Err(format!("HTTP {} - {}", status, text));
+    }
+
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+        if let Some(success) = json.get("success").and_then(|s| s.as_bool()) {
+            if !success {
+                let msg = json.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+                return Err(format!("API error: {}", msg));
+            }
+        }
+    }
+
+    Ok(text)
+}
+
+/// 更新录制状态的托盘图标和菜单文本
+fn update_recording_ui(app_handle: &tauri::AppHandle, menu: &Menu<tauri::Wry>, active: bool) {
+    // 更新图标
+    if let Some(tray) = app_handle.tray_by_id("main-tray") {
+        let new_icon = if active {
+            tauri::image::Image::from_bytes(include_bytes!("../icons/icon-record.ico"))
+                .map(|img: tauri::image::Image| img.to_owned())
+                .ok()
+        } else {
+            // 恢复默认或托管图标
+            let config_path = get_config_path();
+            let (_, _, is_delegated) = read_delegated_state(&config_path);
+            if is_delegated {
+                tauri::image::Image::from_bytes(include_bytes!("../icons/icon-delegated.ico"))
+                    .map(|img| img.to_owned())
+                    .ok()
+            } else {
+                app_handle.default_window_icon().map(|img| img.to_owned())
+            }
+        };
+        if let Some(icon) = new_icon {
+            let _ = tray.set_icon(Some(icon));
+        }
+    }
+
+    // 更新菜单文本
+    let config_path = get_config_path();
+    let language = std::fs::read_to_string(&config_path)
+        .ok()
+        .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
+        .and_then(|json| json.get("ui").and_then(|u| u.get("language")).and_then(|l| l.as_str()).map(|s| s.to_string()))
+        .unwrap_or_else(|| "zh_CN".to_string());
+
+    let record_text = match language.as_str() {
+        "zh_CN" => if active { "停止录制" } else { "开始录制" },
+        _ => if active { "Stop Recording" } else { "Start Recording" },
+    };
+
+    if let Some(item) = menu.get("record") {
+        if let Some(menu_item) = item.as_menuitem() {
+            let _ = menu_item.set_text(record_text);
+        }
+    }
+}
+
 /// 更新托管模式的托盘图标和菜单文本
 fn update_delegated_ui(app_handle: &tauri::AppHandle, menu: &Menu<tauri::Wry>, active: bool) {
     // 更新图标
@@ -673,12 +839,19 @@ fn update_delegated_ui(app_handle: &tauri::AppHandle, menu: &Menu<tauri::Wry>, a
 const WM_REHOTKEY: u32 = 0x0401;
 /// WM_USER + 2，Python 通知 Rust 托管状态变更
 const WM_DELEGATED_SYNC: u32 = 0x0402;
+/// WM_USER + 3，Python 通知 Rust 录制状态变更（浮窗停止等）
+const WM_RECORDING_SYNC: u32 = 0x0403;
 
 /// 启动全局热键监听器（退出托管快捷键）
 /// 使用 GetMessageW 阻塞等待，零 CPU 占用
 /// 收到 WM_REHOTKEY 消息时重新注册快捷键
 fn start_hotkey_listener(app_handle: tauri::AppHandle, menu: Menu<tauri::Wry>, state: Arc<AppState>, config: &Config) {
     let initial_hotkey = config.delegated.exit_hotkey.clone();
+    let initial_rec_hotkey = std::fs::read_to_string(get_config_path())
+        .ok()
+        .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
+        .and_then(|j| j.get("recording").and_then(|r| r.get("hotkey")).and_then(|h| h.as_str()).map(|s| s.to_string()))
+        .unwrap_or_else(|| "ctrl+alt+r".to_string());
     let config_path = get_config_path();
 
     std::thread::spawn(move || {
@@ -692,14 +865,25 @@ fn start_hotkey_listener(app_handle: tauri::AppHandle, menu: Menu<tauri::Wry>, s
             let mut current_hotkey = initial_hotkey;
             let (mut modifiers, mut vk) = parse_hotkey(&current_hotkey);
 
-            // 注册快捷键，失败则跳过（仍运行消息循环以接收 WM_DELEGATED_SYNC 等消息）
+            let mut current_rec_hotkey = initial_rec_hotkey;
+            let (mut rec_modifiers, mut rec_vk) = parse_hotkey(&current_rec_hotkey);
+
+            // 注册快捷键，失败则跳过（仍运行消息循环以接收消息）
             let mut hotkey_registered = false;
+            let mut rec_hotkey_registered = false;
             unsafe {
                 if RegisterHotKey(ptr::null_mut(), 1, modifiers, vk) != 0 {
                     hotkey_registered = true;
                     eprintln!("[HOTKEY] Registered exit delegated hotkey: {}", current_hotkey);
                 } else {
                     eprintln!("[HOTKEY] Failed to register hotkey: {}, continuing without hotkey", current_hotkey);
+                }
+                // 注册录制快捷键 (ID=2)
+                if RegisterHotKey(ptr::null_mut(), 2, rec_modifiers, rec_vk) != 0 {
+                    rec_hotkey_registered = true;
+                    eprintln!("[HOTKEY] Registered recording hotkey: {}", current_rec_hotkey);
+                } else {
+                    eprintln!("[HOTKEY] Failed to register recording hotkey: {}, continuing without hotkey", current_rec_hotkey);
                 }
             }
 
@@ -718,8 +902,8 @@ fn start_hotkey_listener(app_handle: tauri::AppHandle, menu: Menu<tauri::Wry>, s
                     break; // WM_QUIT
                 }
 
-                if msg.message == WM_HOTKEY {
-                    // 快捷键触发 → 退出托管
+                if msg.message == WM_HOTKEY && msg.wParam == 1 {
+                    // 快捷键1触发 → 退出托管
                     let (port, token) = read_server_config(&config_path);
                     match call_delegated_api("exit", port, &token) {
                         Ok(_) => {
@@ -727,10 +911,26 @@ fn start_hotkey_listener(app_handle: tauri::AppHandle, menu: Menu<tauri::Wry>, s
                         }
                         Err(e) => eprintln!("[HOTKEY] Failed to exit delegated: {}", e),
                     }
+                } else if msg.message == WM_HOTKEY && msg.wParam == 2 {
+                    // 快捷键2触发 → 切换录制
+                    let is_rec = state.is_recording.load(std::sync::atomic::Ordering::SeqCst);
+                    let action = if is_rec { "stop" } else { "start" };
+                    let (port, token) = read_server_config(&config_path);
+                    match call_recording_api(action, port, &token) {
+                        Ok(_) => {
+                            let new_rec = action == "start";
+                            state.is_recording.store(new_rec, std::sync::atomic::Ordering::SeqCst);
+                            update_recording_ui(&app_handle, &menu, new_rec);
+                        }
+                        Err(e) => eprintln!("[HOTKEY] Recording {} failed: {}", action, e),
+                    }
                 } else if msg.message == WM_REHOTKEY {
-                    // 配置变更 → 重新注册快捷键
+                    // 配置变更 → 重新注册所有快捷键
                     if hotkey_registered {
                         unsafe { UnregisterHotKey(ptr::null_mut(), 1); }
+                    }
+                    if rec_hotkey_registered {
+                        unsafe { UnregisterHotKey(ptr::null_mut(), 2); }
                     }
 
                     // 从配置文件读取最新快捷键
@@ -752,6 +952,25 @@ fn start_hotkey_listener(app_handle: tauri::AppHandle, menu: Menu<tauri::Wry>, s
                         vk = new_vk;
                     }
 
+                    // 同时读取录制快捷键
+                    if let Some(new_rec_hotkey) = std::fs::read_to_string(&config_path)
+                        .ok()
+                        .and_then(|content| {
+                            serde_json::from_str::<serde_json::Value>(&content).ok()
+                        })
+                        .and_then(|json| {
+                            json.get("recording")
+                                .and_then(|r| r.get("hotkey"))
+                                .and_then(|h| h.as_str())
+                                .map(|s| s.to_string())
+                        })
+                    {
+                        current_rec_hotkey = new_rec_hotkey;
+                        let (new_mod, new_vk) = parse_hotkey(&current_rec_hotkey);
+                        rec_modifiers = new_mod;
+                        rec_vk = new_vk;
+                    }
+
                     unsafe {
                         if RegisterHotKey(ptr::null_mut(), 1, modifiers, vk) != 0 {
                             hotkey_registered = true;
@@ -760,16 +979,30 @@ fn start_hotkey_listener(app_handle: tauri::AppHandle, menu: Menu<tauri::Wry>, s
                             hotkey_registered = false;
                             eprintln!("[HOTKEY] Failed to re-register hotkey: {}", current_hotkey);
                         }
+                        if RegisterHotKey(ptr::null_mut(), 2, rec_modifiers, rec_vk) != 0 {
+                            rec_hotkey_registered = true;
+                            eprintln!("[HOTKEY] Re-registered recording hotkey: {}", current_rec_hotkey);
+                        } else {
+                            rec_hotkey_registered = false;
+                            eprintln!("[HOTKEY] Failed to re-register recording hotkey: {}", current_rec_hotkey);
+                        }
                     }
                 } else if msg.message == WM_DELEGATED_SYNC {
                     // Python 通知：托管状态变更 → 读 config → 更新托盘图标
                     let (_, _, is_active) = read_delegated_state(&config_path);
                     update_delegated_ui(&app_handle, &menu, is_active);
+                } else if msg.message == WM_RECORDING_SYNC {
+                    // Python 通知：录制停止（浮窗按钮等）→ 更新托盘图标和菜单
+                    state.is_recording.store(false, std::sync::atomic::Ordering::SeqCst);
+                    update_recording_ui(&app_handle, &menu, false);
                 }
             }
 
             if hotkey_registered {
                 unsafe { UnregisterHotKey(ptr::null_mut(), 1); }
+            }
+            if rec_hotkey_registered {
+                unsafe { UnregisterHotKey(ptr::null_mut(), 2); }
             }
         }
 
@@ -867,6 +1100,7 @@ fn parse_hotkey(hotkey: &str) -> (u32, u32) {
             "space" => vk = VK_SPACE as u32,
             "tab" => vk = VK_TAB as u32,
             "enter" | "return" => vk = VK_RETURN as u32,
+            "\\" | "backslash" => vk = 0xDC, // VK_OEM_5
             _ => {}
         }
     }

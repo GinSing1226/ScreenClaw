@@ -1,9 +1,6 @@
 """
 用户确认服务 - 用于 SendInput 操作前的弹窗确认
 """
-import tkinter as tk
-import tkinter.font as tkfont
-from tkinter import ttk
 from typing import Optional
 from dataclasses import dataclass
 import json
@@ -92,12 +89,13 @@ class ConfirmDialog:
 
     TIMEOUT_SECONDS = 30  # 超时时间（秒）
 
-    def __init__(self, ai_app_type: str, window_title: str, operation: str, operation_detail: str, language: str = "zh_CN"):
+    def __init__(self, ai_app_type: str, window_title: str, operation: str, operation_detail: str, language: str = "zh_CN", show_remember: bool = True):
         self.ai_app_type = ai_app_type
         self.window_title = window_title
         self.operation = operation
         self.operation_detail = operation_detail
         self.language = language
+        self.show_remember = show_remember
         self.result: Optional[ConfirmResult] = None
         self.time_left = self.TIMEOUT_SECONDS
         self.timer_id = None
@@ -143,6 +141,10 @@ class ConfirmDialog:
 
     def show(self) -> ConfirmResult:
         """显示弹窗并返回结果"""
+        import tkinter as tk
+        import tkinter.font as tkfont
+        from tkinter import ttk
+
         root = tk.Tk()
         root.title("ScreenClaw " + self.get_text('title'))
         root.geometry("520x420")
@@ -248,8 +250,12 @@ class ConfirmDialog:
         # 记住选择复选框
         remember_var = tk.BooleanVar(value=False)
 
-        # 复选框文本（根据语言决定是否分行）
-        if self.language == "en_US":
+        # 复选框文本（根据语言决定是否分行），桌面级操作不显示
+        if not self.show_remember:
+            # 不显示复选框，留出间距
+            spacer = tk.Frame(main_frame, bg=self.BG_PRIMARY, height=20)
+            spacer.pack(fill=tk.X)
+        elif self.language == "en_US":
             # 英文时分两行显示
             checkbox_frame = tk.Frame(main_frame, bg=self.BG_PRIMARY)
             checkbox_frame.pack(fill=tk.X, pady=(0, 20))
@@ -481,7 +487,7 @@ class ConfirmService:
 
     @classmethod
     def request_confirm(cls, ai_app_type: str, window_title: str, process_name: str,
-                        operation: str, operation_detail: str) -> ConfirmResult:
+                        operation: str, operation_detail: str, show_remember: bool = True) -> ConfirmResult:
         """请求用户确认
 
         Args:
@@ -490,6 +496,7 @@ class ConfirmService:
             process_name: 目标进程名（如 "notepad.exe"）
             operation: 操作类型（如 "输入文本" / "按键" / "滚动"）
             operation_detail: 操作详情（如 "输入：hello" / "按键：Ctrl+C"）
+            show_remember: 是否显示"记住选择"复选框（桌面级操作不显示）
 
         Returns:
             ConfirmResult: 确认结果
@@ -502,7 +509,7 @@ class ConfirmService:
             return ConfirmResult(confirmed=True, remember=True)
 
         # 在主线程中显示弹窗
-        dialog = ConfirmDialog(ai_app_type, window_title, operation, operation_detail, cls._language)
+        dialog = ConfirmDialog(ai_app_type, window_title, operation, operation_detail, cls._language, show_remember=show_remember)
         result = dialog.show()
 
         # 如果用户选择记住，保存进程名（空进程名跳过）

@@ -21,8 +21,15 @@ from _common import (
 )
 
 
-GET_ENDPOINTS = {"health"}
+GET_ENDPOINTS = {"health", "desktop_get_monitors_list"}
 WINDOW_EXEMPT = {"health", "get_window_list", "delegated", "crop_zoom_screenshot"}
+DESKTOP_ENDPOINTS = {
+    "desktop_get_monitors_list", "desktop_screenshot",
+    "desktop_click", "desktop_double_click", "desktop_right_click",
+    "desktop_drag", "desktop_scroll",
+    "desktop_input_text", "desktop_press_key", "desktop_hover",
+}
+BASIC_ENDPOINTS = {"health", "desktop_get_monitors_list"}
 
 
 def build_body(endpoint: str, params):
@@ -32,16 +39,21 @@ def build_body(endpoint: str, params):
 
     validate_request_params(endpoint, body)
 
-    if endpoint != "health":
+    if endpoint not in BASIC_ENDPOINTS:
         required = ["ai_app_type", "session_id"]
         for key in required:
             if key not in body:
                 raise ValueError(f"{key} is required")
 
-    if endpoint not in WINDOW_EXEMPT and "window_id" not in body:
-        raise ValueError("window_id is required")
-    if endpoint not in WINDOW_EXEMPT and endpoint != "wait" and "main_window_id" not in body:
-        raise ValueError("main_window_id is required")
+    if endpoint not in WINDOW_EXEMPT and endpoint not in DESKTOP_ENDPOINTS and endpoint != "batch":
+        if "window_id" not in body:
+            raise ValueError("window_id is required")
+        if endpoint != "wait" and "main_window_id" not in body:
+            raise ValueError("main_window_id is required")
+
+    if endpoint in DESKTOP_ENDPOINTS and endpoint != "desktop_get_monitors_list":
+        if "monitor_index" not in body:
+            raise ValueError("monitor_index is required")
     return body
 
 

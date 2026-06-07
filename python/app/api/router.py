@@ -3,7 +3,7 @@ API路由汇总
 """
 from fastapi import APIRouter
 
-from app.api import process, screenshot, action, input as input_api, system, delegated, scroll_screenshot, crop_zoom
+from app.api import process, screenshot, action, input as input_api, system, delegated, scroll_screenshot, crop_zoom, desktop, recording
 
 # 创建主路由
 api_router = APIRouter()
@@ -17,3 +17,5 @@ api_router.include_router(action.router, prefix="/api", tags=["操作"])
 api_router.include_router(input_api.router, prefix="/api", tags=["输入"])
 api_router.include_router(system.router, prefix="/api", tags=["系统"])
 api_router.include_router(delegated.router, prefix="/api", tags=["托管模式"])
+api_router.include_router(desktop.router, prefix="/api", tags=["桌面级操作"])
+api_router.include_router(recording.router, prefix="/api", tags=["操作录制"])

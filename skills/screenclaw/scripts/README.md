@@ -11,6 +11,12 @@ AI 只调用公开入口：
 scripts/screenclaw.py
 scripts/screenclaw.ps1
 scripts/screenclaw.sh
+scripts/coord_adapt.py
+scripts/coord_adapt.ps1
+scripts/coord_adapt.sh
+scripts/recording_windows.py
+scripts/recording_windows.ps1
+scripts/recording_windows.sh
 ```
 
 不要调用 `_common.py` 或任何旧脚本。调用某个 API 前，阅读 `references/api/{endpoint}.md`，本文件不提供完整 API 参数示例。
@@ -47,6 +53,31 @@ bash：
 bash scripts/screenclaw.sh <endpoint> api_url=<url> token=<token> ai_app_type=<type> session_id=<id> [endpoint参数...]
 ```
 
+坐标候选迁移：
+
+```bash
+python scripts/coord_adapt.py \
+  source.width=1936 source.height=1048 source.scale_factor=1.0 \
+  current.width=3840 current.height=2088 current.scale_factor=1.5 \
+  point.x=2.0 point.y=16.0 risk=normal
+```
+
+录制窗口组分析：
+
+```bash
+python scripts/recording_windows.py path=record/record_YYYYMMDD_HHmmss
+python scripts/recording_windows.py path=record/record_YYYYMMDD_HHmmss/step.json format=json
+```
+
+PowerShell：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/coord_adapt.ps1 `
+  source.width=1936 source.height=1048 source.scale_factor=1.0 `
+  current.width=3840 current.height=2088 current.scale_factor=1.5 `
+  point.x=2.0 point.y=16.0 risk=normal
+```
+
 ## 点号路径格式
 
 使用点号路径传递嵌套参数。PowerShell 下不要手写 JSON。
@@ -64,6 +95,70 @@ step.0.params.y=35
 ```
 
 点号路径会转换为 API 请求结构。具体参数和完整示例见对应 API 文档。
+
+## 坐标候选迁移
+
+`coord_adapt.*` 用于执行场景模板前，判断模板固定百分比坐标能否复用，并给出当前坐标空间里的候选百分比坐标。它不调用 ScreenClaw API，只做本地计算。
+
+输入：
+
+| 参数 | 说明 |
+|------|------|
+| `source.width` / `source.height` | 模板沉淀时该窗口或桌面的原始 `window_info.source_width/source_height` |
+| `source.scale_factor` | 模板沉淀时该窗口或桌面的缩放率 |
+| `current.width` / `current.height` | 当前截图返回的 `window_info.source_width/source_height` |
+| `current.scale_factor` | 当前截图返回的缩放率 |
+| `point.x` / `point.y` | 模板中的百分比坐标 |
+| `risk` | `large`、`normal`、`small`、`danger`，默认 `normal` |
+
+算法：
+
+```text
+source_px = source_size * template_percent / 100
+logical_px = source_px / source.scale_factor
+candidate_px = logical_px * current.scale_factor
+candidate_percent = candidate_px / current_size * 100
+```
+
+输出：
+
+| decision | 使用方式 |
+|----------|----------|
+| `direct` | 坐标迁移偏移很小，可直接使用候选坐标 |
+| `verify` | 用候选坐标打 marker 反验，确认落点后再操作 |
+| `relocate` | 不复用固定坐标，重新截图定位 |
+
+默认阈值按单轴像素偏移判断：
+
+| risk | direct | verify |
+|------|--------|--------|
+| `large` | <= 6px | <= 20px |
+| `normal` | <= 3px | <= 15px |
+| `small` | <= 2px | <= 8px |
+| `danger` | 不直接复用 | <= 6px |
+
+同一窗口组首次遇到固定坐标时调用一次并缓存结果；窗口尺寸、缩放率、`window_id/main_window_id`、`monitor_index` 或页面布局变化后重新计算。
+
+## 录制窗口组分析
+
+`recording_windows.*` 从 `step.json` 机械生成窗口组预处理表，供从录制沉淀场景模板时使用。它会按 `window_id/main_window_id` 判断主窗口、子窗口、系统弹窗和桌面级，并输出 `window_info`、录制步骤和推荐变量名。
+
+用法：
+
+```bash
+python scripts/recording_windows.py path=record/record_YYYYMMDD_HHmmss
+powershell -ExecutionPolicy Bypass -File scripts/recording_windows.ps1 path=record/record_YYYYMMDD_HHmmss
+bash scripts/recording_windows.sh path=record/record_YYYYMMDD_HHmmss
+```
+
+输出格式：
+
+| format | 说明 |
+|--------|------|
+| `markdown` | 默认，直接复制到场景模板草稿中作为窗口组事实表 |
+| `json` | 结构化输出，便于后续脚本处理 |
+
+从录制沉淀前先运行该脚本。后续窗口清单、节点层级、固定坐标表和指令变量必须与脚本输出一致；业务命名不能把子窗口改写成主窗口。
 
 ## 本地/远程图片处理
 

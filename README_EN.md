@@ -52,10 +52,18 @@ Automate mobile emulators and official phone assistants (multi-screen collaborat
 - No virtual machine needed
 - No specialized UI LLM needed to operate mobile apps
 
+### 🖥️ Desktop-Level Capture & Control
+- Capture and operate directly on the desktop without binding to any process — control desktop icons, taskbar, Start menu, and any visible content
+- Multi-monitor support with independent coordinate spaces per display, including cross-monitor dragging
+- Shares the same grid rendering and percentage coordinate system as window-level operations
+
+### 🎬 Record & Distill Scenarios
+- Manual walkthrough: Start recording via hotkey or tray menu, perform operations manually, and the backend automatically captures per-step screenshots, coordinates, and action types
+- AI distillation: Invoke the screenclaw skill, provide the recording output folder (under the program's `record/` directory), and let AI distill it into a scenario template
+
 ### 💎 Knowledge Accumulation & Reuse
-- Save successful task workflows as scenario templates for next-time reuse
-- When integrated with personal AI assistants like OpenClaw, personalized data stays local
-- AI gets smarter about your preferences, boosting efficiency over time
+- AI operation + AI distillation: After AI completes a task automatically, save the successful workflow as a scenario template for next-time reuse, or refine existing templates
+- Coordinate adaptation: When reusing a template, if the application size differs, coordinates can be proportionally adjusted for attempted reuse
 
 ### 🔒 Safe and Controllable
 - Token authentication mechanism
@@ -122,6 +130,8 @@ npx skills add GinSing1226/ScreenClaw
 
 ## 📚 API List
 
+### Window-Level APIs
+
 | API | Purpose | Description |
 |-----|---------|-------------|
 | `health` | Verify service connectivity | First step check before operations |
@@ -142,6 +152,31 @@ npx skills add GinSing1226/ScreenClaw
 | `scroll_screenshot` | Scrolling long screenshot | Auto-scroll stitching for long images |
 | `crop_zoom_screenshot` | Crop & zoom | Enlarge specific area of existing screenshot |
 | `delegated` | Enter/Exit delegated mode | User requests full computer control |
+
+### Desktop-Level APIs
+
+Desktop-level operations target **monitors** rather than windows. They can control desktop icons, taskbar, Start menu, and other elements not bound to any process. Always use hijack mode.
+
+| API | Purpose | Description |
+|-----|---------|-------------|
+| `desktop_get_monitors_list` | Enumerate monitors | Get index, name, resolution, primary flag |
+| `desktop_screenshot` | Desktop screenshot | Capture specified monitor with grid and markers |
+| `desktop_click` | Desktop click | Click desktop elements |
+| `desktop_double_click` | Desktop double-click | Double-click desktop elements |
+| `desktop_right_click` | Desktop right-click | Right-click desktop elements |
+| `desktop_drag` | Desktop drag | Same-monitor and cross-monitor dragging |
+| `desktop_scroll` | Desktop scroll | Mouse wheel operation |
+| `desktop_input_text` | Desktop text input | Clipboard paste input |
+| `desktop_press_key` | Desktop key press | Keyboard shortcuts |
+| `desktop_hover` | Desktop hover | Trigger hover tooltips |
+
+### Recording APIs
+
+| API | Purpose | Description |
+|-----|---------|-------------|
+| `recording/start` | Start recording | Trigger via hotkey or API |
+| `recording/stop` | Stop recording | Stop and save output to record/ directory |
+| `recording/status` | Query recording status | Whether recording, step count, etc. |
 
 ---
 
@@ -490,6 +525,9 @@ For most people, current ADB, virtual machine, and docker automation solutions a
 ### Complex Task Automation
 Specialized UI LLMs typically have fewer parameters and struggle to understand complex tasks or execute long-duration tasks. ScreenClaw enables SOTA-level multimodal LLMs (like GPT-4V, Claude 3.5 Sonnet) to automate software operations.
 
+### Record → Distill Template → Auto Reuse
+Manually operate once while recording captures per-step screenshots and actions. AI then distills the recording into a scenario template. Next time, AI executes the same task automatically, with coordinate adaptation and template refinement support.
+
 ### Comparison with Other Tools
 
 | Scenario | Recommended Tool | ScreenClaw Role |
@@ -550,8 +588,10 @@ Calls via HTTP API, cross-platform without restrictions.
 |-------|-----------|
 | Frontend | Tauri 2.0 + Vue 3 + TypeScript |
 | Backend | Python 3.11 + FastAPI + Uvicorn |
-| Screenshot | pywin32 / mss |
+| Window Screenshot | pywin32 (PrintWindow) |
+| Desktop Screenshot | mss |
 | Input Injection | pywin32 (PostMessage) / pyautogui (SendInput) |
+| Operation Recording | Windows Hook (WH_MOUSE_LL / WH_KEYBOARD_LL) |
 | Grid Drawing | Pillow (PIL) |
 
 ---
@@ -562,9 +602,9 @@ Calls via HTTP API, cross-platform without restrictions.
 screenClaw/
 ├── python/                   # Python Backend
 │   ├── app/
-│   │   ├── api/             # API Routes
-│   │   ├── core/            # Core Business Logic
-│   │   ├── platform/        # Platform Adaptation Layer
+│   │   ├── api/             # API Routes (window-level, desktop-level, recording)
+│   │   ├── core/            # Core Business Logic (recorder, etc.)
+│   │   ├── platform/        # Platform Adaptation (capture, Hook, input injection)
 │   │   ├── models/          # Data Models
 │   │   ├── services/        # Service Layer
 │   │   ├── scripts/         # API Call Scripts
@@ -584,7 +624,13 @@ screenClaw/
 ├── skills/                  # AI Skill
 │   └── screenclaw/
 │       ├── SKILL.md         # Skill Definition (Complete Usage Guide)
+│       ├── scripts/         # Helper scripts (coord_adapt, recording_windows, etc.)
 │       └── references/      # API Docs and Scenario Templates
+│
+├── record/                  # Recording outputs (auto-created, gitignored)
+│   └── record_YYYYMMDD_HHmmss/
+│       ├── step.json        # Recording metadata + steps
+│       └── step_XXXX.png    # Step screenshots
 │
 └── data/                    # Data Directory
     └── config.json          # Configuration File (Auto-created)
@@ -604,6 +650,10 @@ Located at `data/config.json` (auto-created on initialization):
     "port": 12261,
     "token": "your-token-here",
     "local_ip": "192.168.x.x"
+  },
+  "recording": {
+    "hotkey": "ctrl+alt+\\",
+    "scroll_merge_interval_ms": 1000
   }
 }
 ```
@@ -614,6 +664,8 @@ Located at `data/config.json` (auto-created on initialization):
 | `port` | HTTP service port |
 | `token` | API authentication token |
 | `local_ip` | Auto-detected LAN IP |
+| `recording.hotkey` | Recording hotkey, default `Ctrl+Alt+\` |
+| `recording.scroll_merge_interval_ms` | Continuous scroll merge interval (ms) |
 
 ### AI Skill Connection Configuration
 Located at `{skill-dir}/references/config.md`, for AI applications to connect to ScreenClaw service.
@@ -640,7 +692,6 @@ Located at `{skill-dir}/references/config.md`, for AI applications to connect to
 
 - 🎯 **Improve Recognition Accuracy** — Enhance first-time recognition through skill optimization and scenario template accumulation
 - 🔄 **More RPA Actions** — Expand supported automation types to cover more use cases
-- 🖥️ **Desktop-Level Operation** — Capture and operate directly on the desktop without binding to specific processes, works with any visible content (will seize user's mouse and keyboard)
 - 🧠 **Coordinate Accuracy Improvement** — Leverage lightweight OCR or accessibility tree technology to further improve coordinate accuracy
 - 📦 **Scenario Template Library** — Package more templates for common software, ready to use out-of-the-box
 

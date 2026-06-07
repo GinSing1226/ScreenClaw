@@ -153,7 +153,8 @@ class LogService:
         params: Dict[str, Any],
         result: Dict[str, Any],
         duration_ms: int = 0,
-        client_ip: str = None
+        client_ip: str = None,
+        monitor_index: int = None
     ):
         """
         记录日志（异步非阻塞）
@@ -161,13 +162,14 @@ class LogService:
         Args:
             ai_app_type: AI应用类型
             session_id: 会话ID
-            window_id: 窗口句柄
-            process_name: 进程名称
+            window_id: 窗口句柄（桌面操作为 None）
+            process_name: 进程名称（桌面操作为 None）
             instruction: 指令类型
             params: 请求参数
             result: 执行结果
             duration_ms: 执行耗时（毫秒）
             client_ip: 客户端IP地址
+            monitor_index: 显示器索引（桌面操作填充，窗口操作为 None）
         """
         log_file = self._get_log_file_path(ai_app_type, session_id)
 
@@ -177,6 +179,7 @@ class LogService:
             "client_ip": client_ip or "unknown",
             "window_id": window_id,
             "process_name": process_name,
+            "monitor_index": monitor_index,
             "instruction": instruction,
             "params": params,
             "result": result,

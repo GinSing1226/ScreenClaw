@@ -56,7 +56,17 @@ export function useLogs() {
       'crop_zoom_screenshot': '裁剪放大',
       'delegated_enter': '进入托管',
       'delegated_exit': '退出托管',
-      'delegated_status': '查询托管状态'
+      'delegated_status': '查询托管状态',
+      // 桌面级操作
+      'desktop_screenshot': '桌面截图',
+      'desktop_click': '桌面点击',
+      'desktop_double_click': '桌面双击',
+      'desktop_right_click': '桌面右键',
+      'desktop_drag': '桌面拖拽',
+      'desktop_scroll': '桌面滚动',
+      'desktop_input_text': '桌面输入文本',
+      'desktop_press_key': '桌面按键',
+      'desktop_hover': '桌面悬浮',
     },
     en_US: {
       'screenshot': 'Screenshot',
@@ -77,7 +87,17 @@ export function useLogs() {
       'crop_zoom_screenshot': 'Crop Zoom',
       'delegated_enter': 'Enter Delegated',
       'delegated_exit': 'Exit Delegated',
-      'delegated_status': 'Query Delegated Status'
+      'delegated_status': 'Query Delegated Status',
+      // Desktop operations
+      'desktop_screenshot': 'Desktop Screenshot',
+      'desktop_click': 'Desktop Click',
+      'desktop_double_click': 'Desktop Double Click',
+      'desktop_right_click': 'Desktop Right Click',
+      'desktop_drag': 'Desktop Drag',
+      'desktop_scroll': 'Desktop Scroll',
+      'desktop_input_text': 'Desktop Input Text',
+      'desktop_press_key': 'Desktop Press Key',
+      'desktop_hover': 'Desktop Hover',
     }
   }
 

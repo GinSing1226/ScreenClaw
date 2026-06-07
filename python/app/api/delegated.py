@@ -2,8 +2,6 @@
 托管模式API - 进入/退出/查询托管状态
 """
 import time
-import tkinter as tk
-import tkinter.font as tkfont
 from typing import Optional
 from dataclasses import dataclass
 from fastapi import APIRouter, Request as FastAPIRequest
@@ -82,6 +80,9 @@ class DelegatedConfirmDialog:
         return text
 
     def show(self) -> DelegatedConfirmResult:
+        import tkinter as tk
+        import tkinter.font as tkfont
+
         root = tk.Tk()
         root.title("ScreenClaw - " + self.get_text('title'))
         root.geometry("480x340")

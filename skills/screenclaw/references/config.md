@@ -15,7 +15,7 @@ http://{host}:{port}
 {token}
 ```
 
-- 默认请求地址：`http://localhost:12261`
+- 默认请求地址：`http://localhost:12261`。默认token：`8aae49690621b5e57849b3ba8a45085f`
 - 由用户提供，提供后，你可以保存到此。地址和鉴权信息在screenclaw监控面板上。
 - **如果获取不到请求地址、token，直接向用户索取，不要猜测或使用默认值，不要直接调用脚本**
 
@@ -35,6 +35,15 @@ http://{host}:{port}
 | openclaw | `openclaw` |
 | codex | `codex` |
 | 其他应用 | 应用名称（小写下划线） |
+
+## ScreenClaw 安装目录 (screenclaw_install_dir)
+
+ScreenClaw 软件的解压运行位置。首次下载安装后记录到此文件，后续会话复用。
+
+- 如果未记录或目录下没有 `screenclaw.exe`，需要重新下载安装（见 SKILL.md 初始化步骤）。
+- 用户可指定安装目录；未指定时询问用户。
+
+**安装目录**：（下载解压后填写，例如 `C:\Users\admin\ScreenClaw`）
 
 ## 会话ID (session_id) 
 

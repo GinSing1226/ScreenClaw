@@ -129,6 +129,13 @@ const i18n = createI18n({
           exitHotkey: '退出快捷键',
           exitHotkeyTip: '按下此快捷键可随时退出托管模式，格式如 ctrl+alt+z'
         },
+        recording: {
+          title: '操作录制',
+          hotkey: '录制快捷键',
+          hotkeyTip: '按下此快捷键开始/停止录制，格式如 ctrl+alt+\\',
+          scrollMergeInterval: '滚动合并间隔',
+          scrollMergeIntervalTip: '连续滚动事件在此时间窗口内合并为一步（毫秒），值越大合并越多'
+        },
         tooltips: {
           port: 'HTTP 服务监听端口，用于接收 AI 应用的 API 请求',
           token: 'API 访问密钥，防止未授权访问你的设备',
@@ -201,7 +208,8 @@ const i18n = createI18n({
         // OpenClaw 提示词
         promptTitle: '请帮我集成 ScreenClaw 屏幕可视化操作服务',
         stepOne: '第一步',
-        stepOneTitle: '安装技能',
+        stepOneTitle: '全局安装技能',
+        stepOneDesc: '执行以下命令全局安装技能（需要通过符号链接自动引用到当前 AI 应用的 skills 目录）',
         stepTwo: '第二步',
         stepTwoTitle: '写入技能配置',
         stepTwoDesc: '将下面的地址和令牌保存到技能配置里',
@@ -215,6 +223,7 @@ const i18n = createI18n({
         stepFourSkillLocation: '技能位置',
         stepFourConfigFile: '配置文件',
         stepFourConfigWritten: '已写入',
+        stepFourAppRoot: '应用根目录',
         stepFourTriggerMode: '触发方式',
         stepFourTriggerExample1: '帮我自动操作<应用名>，<任务描述>',
         stepFourTriggerExample2: '使用screenclaw技能完成<目标>',
@@ -230,11 +239,13 @@ const i18n = createI18n({
         // 通用AI提示词
         othersPromptTitle: '请帮我集成 ScreenClaw 屏幕可视化操作服务',
         othersStepOne: '第一步',
-        othersStepOneTitle: '安装',
+        othersStepOneTitle: '全局安装',
+        othersStepOneDesc: '执行以下命令全局安装技能（会通过符号链接自动引用到当前 AI 应用的 skills 目录）',
         othersStepTwo: '第二步',
         othersStepTwoTitle: '配置',
         othersStepTwoDesc: '将下面的地址和令牌保存到技能配置里',
-        othersConfigFilePath: 'screenclaw/reference/config.md'
+        othersConfigFilePath: 'screenclaw/reference/config.md',
+        othersAppRoot: '应用根目录'
       }
     },
     en_US: {
@@ -357,6 +368,13 @@ const i18n = createI18n({
           exitHotkey: 'Exit Hotkey',
           exitHotkeyTip: 'Press this hotkey to exit delegated mode at any time, e.g. ctrl+alt+z'
         },
+        recording: {
+          title: 'Recording',
+          hotkey: 'Recording Hotkey',
+          hotkeyTip: 'Press this hotkey to start/stop recording, e.g. ctrl+alt+\\',
+          scrollMergeInterval: 'Scroll Merge Interval',
+          scrollMergeIntervalTip: 'Consecutive scroll events within this window are merged into one step (ms). Higher values merge more'
+        },
         tooltips: {
           port: 'HTTP service listening port for receiving AI app API requests',
           token: 'API access key to prevent unauthorized access to your device',
@@ -429,7 +447,8 @@ const i18n = createI18n({
         // OpenClaw prompts
         promptTitle: 'Please help me integrate ScreenClaw Visual Screen Control Service',
         stepOne: 'Step 1',
-        stepOneTitle: 'Install Skill',
+        stepOneTitle: 'Install Skill Globally',
+        stepOneDesc: 'Run the following command to install the skill globally (it needs to be symlinked into the current AI app\'s skills directory)',
         stepTwo: 'Step 2',
         stepTwoTitle: 'Write Skill Config',
         stepTwoDesc: 'Save the address and token below to the skill config',
@@ -443,6 +462,7 @@ const i18n = createI18n({
         stepFourSkillLocation: 'Skill Location',
         stepFourConfigFile: 'Config File',
         stepFourConfigWritten: 'Written',
+        stepFourAppRoot: 'App Root',
         stepFourTriggerMode: 'Trigger Mode',
         stepFourTriggerExample1: 'Help me auto-operate <app>, <task>',
         stepFourTriggerExample2: 'Use screenclaw skill to complete <goal>',
@@ -458,11 +478,13 @@ const i18n = createI18n({
         // Generic AI prompts
         othersPromptTitle: 'Please help me integrate ScreenClaw Visual Screen Control Service',
         othersStepOne: 'Step 1',
-        othersStepOneTitle: 'Install',
+        othersStepOneTitle: 'Install Globally',
+        othersStepOneDesc: 'Run the following command to install the skill globally (it needs to be symlinked into the current AI app\'s skills directory)',
         othersStepTwo: 'Step 2',
         othersStepTwoTitle: 'Configuration',
         othersStepTwoDesc: 'Save the address and token below to the skill config',
-        othersConfigFilePath: 'screenclaw/reference/config.md'
+        othersConfigFilePath: 'screenclaw/reference/config.md',
+        othersAppRoot: 'App Root'
       }
     }
   }

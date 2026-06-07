@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { invoke } from '@tauri-apps/api/core'
 import { useService } from './composables/useService'
 import { useConfig } from './composables/useConfig'
 import { useLogs } from './composables/useLogs'
@@ -13,8 +14,10 @@ import type { LogItem } from './composables/useLogs'
 
 const { t } = useI18n()
 const { loadStatus } = useService()
-const { loadConfig } = useConfig()
+const { config, loadConfig } = useConfig()
 const { loadLogs } = useLogs()
+
+const appRoot = ref('')
 
 const activeTab = ref('monitoring')
 const showAiIntegrate = ref(false)
@@ -26,9 +29,16 @@ const viewLogDetail = (log: LogItem) => {
   showLogDetail.value = true
 }
 
-onMounted(() => {
+onMounted(async () => {
   // 并行加载，不互相阻塞
   Promise.all([loadStatus(), loadConfig(), loadLogs()])
+
+  // 获取应用根目录
+  try {
+    appRoot.value = await invoke<string>('get_app_root')
+  } catch (e) {
+    console.error('Failed to get app root:', e)
+  }
 
   // Python 服务启动后会更新局域网 IP，5 秒后刷新并标记就绪
   setTimeout(() => {
@@ -72,6 +82,8 @@ onMounted(() => {
     <!-- AI集成弹窗 -->
     <AiIntegrateModal
       :visible="showAiIntegrate"
+      :config="config"
+      :app-root="appRoot"
       @close="showAiIntegrate = false"
     />
 

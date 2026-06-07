@@ -9,9 +9,12 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 
-STRING_KEYS = {"text", "key", "keyword", "action", "newline_key", "api_url", "token", "ai_app_type", "session_id", "source_image_path", "self_check"}
+STRING_KEYS = {"text", "key", "keys", "keyword", "action", "newline_key", "api_url", "token", "ai_app_type", "session_id", "source_image_path", "self_check"}
 
 COMMON_KEYS = {"ai_app_type", "session_id", "window_id", "main_window_id"}
+DESKTOP_COMMON_KEYS = {"ai_app_type", "session_id"}
+BATCH_TOP_KEYS = {"ai_app_type", "session_id"}
+STEP_IDENTITY_KEYS = {"window_id", "main_window_id"}
 ACTION_KEYS = {"x", "y", "action_method"}
 ENDPOINT_PARAM_SCHEMAS: Dict[str, Any] = {
     "health": set(),
@@ -74,6 +77,48 @@ ENDPOINT_PARAM_SCHEMAS: Dict[str, Any] = {
     "press_key": {"key", "x", "y", "duration_ms", "action_method"},
     "wait": {"duration_ms", "random_range"},
     "batch": {"instructions": {"action", "params"}, "step": None},
+    "desktop_get_monitors_list": set(),
+    "desktop_screenshot": {
+        "monitor_index": None,
+        "coordinate_type": None,
+        "color_mode": None,
+        "grid": {"density_x", "density_y", "opacity", "color"},
+        "coordinate": {
+            "number_density",
+            "number_decimal",
+            "number_size",
+            "number_color",
+            "number_opacity",
+            "number_stroke_width",
+            "number_stroke_color",
+        },
+        "marker": {
+            "x",
+            "y",
+            "ring_radius",
+            "ring_line_width",
+            "ring_color",
+            "dot_radius",
+            "dot_color",
+        },
+        "self_check": None,
+    },
+    "desktop_click": {"monitor_index": None, "x": None, "y": None},
+    "desktop_double_click": {"monitor_index": None, "x": None, "y": None},
+    "desktop_right_click": {"monitor_index": None, "x": None, "y": None},
+    "desktop_drag": {
+        "monitor_index": None,
+        "start_x": None,
+        "start_y": None,
+        "end_monitor_index": None,
+        "end_x": None,
+        "end_y": None,
+        "duration_ms": None,
+    },
+    "desktop_scroll": {"monitor_index": None, "x": None, "y": None, "delta": None},
+    "desktop_input_text": {"monitor_index": None, "x": None, "y": None, "text": None},
+    "desktop_press_key": {"monitor_index": None, "keys": None, "x": None, "y": None, "duration_ms": None},
+    "desktop_hover": {"monitor_index": None, "x": None, "y": None, "duration_ms": None},
 }
 VALID_ENDPOINTS = set(ENDPOINT_PARAM_SCHEMAS)
 IMAGE_FIELD_KEYS = {"image_base64", "source_image_base64"}
@@ -193,6 +238,8 @@ def image_prefix_for_endpoint(endpoint: str) -> str:
         return "crop_zoom"
     if endpoint == "scroll_screenshot":
         return "scroll_screenshot"
+    if endpoint == "desktop_screenshot":
+        return "desktop"
     return "screenshot"
 
 
@@ -252,10 +299,19 @@ def validate_endpoint(endpoint: str) -> None:
         )
 
 
+DESKTOP_ENDPOINTS = {ep for ep in ENDPOINT_PARAM_SCHEMAS if ep.startswith("desktop_")}
+
+
 def validate_request_params(endpoint: str, body: Dict[str, Any]) -> None:
     validate_endpoint(endpoint)
     schema = ENDPOINT_PARAM_SCHEMAS[endpoint]
-    allowed = COMMON_KEYS | set(schema)
+
+    if endpoint == "batch":
+        allowed = BATCH_TOP_KEYS | set(schema)
+    elif endpoint in DESKTOP_ENDPOINTS:
+        allowed = DESKTOP_COMMON_KEYS | set(schema)
+    else:
+        allowed = COMMON_KEYS | set(schema)
     _validate_mapping(endpoint, body, schema, allowed, endpoint)
 
     if endpoint == "batch":
@@ -266,7 +322,7 @@ def validate_request_params(endpoint: str, body: Dict[str, Any]) -> None:
             if not isinstance(instruction, dict):
                 raise ValueError(f"invalid parameter 'instructions.{index}': expected an object. Next: read references/api/batch.md.")
             action = instruction.get("action")
-            if action not in VALID_ENDPOINTS or action in {"health", "batch"}:
+            if action not in VALID_ENDPOINTS or action in {"health", "batch", "desktop_get_monitors_list"}:
                 raise ValueError(
                     f"unknown batch action '{action}'. Next: read skill.md and references/api/batch.md. "
                     f"Valid actions: {format_valid_endpoints()}"
@@ -275,7 +331,8 @@ def validate_request_params(endpoint: str, body: Dict[str, Any]) -> None:
             if not isinstance(params, dict):
                 raise ValueError(f"invalid parameter 'instructions.{index}.params': expected an object. Next: read references/api/batch.md.")
             step_schema = ENDPOINT_PARAM_SCHEMAS[action]
-            _validate_mapping(action, params, step_schema, set(step_schema), f"step.{index}.params")
+            step_allowed = set(step_schema) | STEP_IDENTITY_KEYS
+            _validate_mapping(action, params, step_schema, step_allowed, f"step.{index}.params")
 
 
 def _validate_mapping(endpoint: str, value: Dict[str, Any], schema: Any, allowed: set[str], path: str) -> None:
@@ -393,7 +450,7 @@ def print_api_result(endpoint: str, api_url: str, body: Dict[str, Any], result: 
         return 1
 
     data = result.get("data") or {}
-    if endpoint in {"screenshot", "scroll_screenshot", "crop_zoom_screenshot"}:
+    if endpoint in {"screenshot", "scroll_screenshot", "crop_zoom_screenshot", "desktop_screenshot"}:
         path = materialize_image_data(
             endpoint,
             data,
@@ -403,7 +460,7 @@ def print_api_result(endpoint: str, api_url: str, body: Dict[str, Any], result: 
         if path:
             print(path)
 
-    if endpoint in {"screenshot", "scroll_screenshot", "crop_zoom_screenshot"}:
+    if endpoint in {"screenshot", "scroll_screenshot", "crop_zoom_screenshot", "desktop_screenshot"}:
         message = result.get("message")
         if message:
             print(message)

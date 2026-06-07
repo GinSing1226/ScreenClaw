@@ -19,6 +19,7 @@ type SectionKey =
   | 'scroll'
   | 'selfCheck'
   | 'delegated'
+  | 'recording'
   | 'security'
 
 const collapsedSections = ref<Record<SectionKey, boolean>>({
@@ -32,6 +33,7 @@ const collapsedSections = ref<Record<SectionKey, boolean>>({
   scroll: true,
   selfCheck: true,
   delegated: true,
+  recording: true,
   security: true
 })
 
@@ -50,6 +52,7 @@ const sectionSummary = computed<Record<SectionKey, string>>(() => ({
   scroll: `${settingsForm.value.maxScrolls}, ${settingsForm.value.defaultScrollPercent}`,
   selfCheck: `${settingsForm.value.selfCheckEnabled ? t('common.enabled') : t('common.disabled')}, ${settingsForm.value.selfCheckInterval}, ${settingsForm.value.selfCheckMinChars}`,
   delegated: settingsForm.value.exitHotkey,
+  recording: `${settingsForm.value.recordingHotkey}, ${settingsForm.value.recordingScrollMergeInterval}ms`,
   security: `${settingsForm.value.autoConfirmProcesses.split('\n').filter(Boolean).length}/${settingsForm.value.blockedProcesses.split('\n').filter(Boolean).length}`
 }))
 
@@ -497,6 +500,31 @@ const changeLanguage = (lang: string) => {
             <span class="help-icon" :title="t('settings.delegated.exitHotkeyTip')">?</span>
           </label>
           <input type="text" v-model="settingsForm.exitHotkey" class="form-input" placeholder="ctrl+alt+z" />
+        </div>
+        </div>
+      </section>
+
+      <!-- 操作录制 -->
+      <section class="settings-section">
+        <button class="section-header" type="button" @click="toggleSection('recording')">
+          <span class="section-title">{{ t('settings.recording.title') }}</span>
+          <span class="section-summary">{{ sectionSummary.recording }}</span>
+          <span class="collapse-icon" :class="{ rotated: !collapsedSections.recording }">›</span>
+        </button>
+        <div class="section-content" v-show="!collapsedSections.recording">
+        <div class="form-group">
+          <label class="form-label">
+            {{ t('settings.recording.hotkey') }}
+            <span class="help-icon" :title="t('settings.recording.hotkeyTip')">?</span>
+          </label>
+          <input type="text" v-model="settingsForm.recordingHotkey" class="form-input" placeholder="ctrl+alt+\" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">
+            {{ t('settings.recording.scrollMergeInterval') }}
+            <span class="help-icon" :title="t('settings.recording.scrollMergeIntervalTip')">?</span>
+          </label>
+          <input type="number" v-model.number="settingsForm.recordingScrollMergeInterval" class="form-input" min="100" max="5000" step="100" />
         </div>
         </div>
       </section>

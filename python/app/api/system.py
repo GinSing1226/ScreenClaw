@@ -49,14 +49,14 @@ async def batch_execute(request: BatchRequest, req: Request = None, authorizatio
     results = []
     executed_count = 0
     failed_index = None
-    batch_has_screenshot = any(inst.action == "screenshot" for inst in request.instructions)
+    batch_has_screenshot = any(inst.action in ("screenshot", "desktop_screenshot") for inst in request.instructions)
     screenshot_success_in_batch = False
 
     if batch_has_screenshot:
         from app.services.config_service import config_service
         self_check_value = None
         for inst in request.instructions:
-            if inst.action == "screenshot" and "self_check" in inst.params:
+            if inst.action in ("screenshot", "desktop_screenshot") and "self_check" in inst.params:
                 self_check_value = inst.params.get("self_check")
                 break
         self_check_result = self_check_service.validate_before_screenshot(
@@ -75,9 +75,7 @@ async def batch_execute(request: BatchRequest, req: Request = None, authorizatio
         result = await _execute_single_instruction(
             request.ai_app_type,
             request.session_id,
-            request.window_id,
             instruction,
-            request.main_window_id,
             is_last,
             client_ip
         )
@@ -90,7 +88,7 @@ async def batch_execute(request: BatchRequest, req: Request = None, authorizatio
 
         if result["success"]:
             executed_count += 1
-            if instruction.action == "screenshot":
+            if instruction.action in ("screenshot", "desktop_screenshot"):
                 screenshot_success_in_batch = True
         else:
             # 失败时中断
@@ -99,16 +97,23 @@ async def batch_execute(request: BatchRequest, req: Request = None, authorizatio
 
     duration_ms = int((time.time() - start_time) * 1000)
 
-    # 获取进程名（用于日志显示）
-    process_info = process_service.get_process_by_window_id(request.window_id)
-    process_name = process_info.process_name if process_info else ""
+    # 获取进程名（用于日志显示）— batch 级别无固定 window_id，取第一条窗口指令的
+    first_window_id = None
+    first_process_name = ""
+    for inst in request.instructions:
+        wid = inst.params.get("window_id")
+        if wid is not None:
+            first_window_id = wid
+            pinfo = process_service.get_process_by_window_id(wid)
+            first_process_name = pinfo.process_name if pinfo else ""
+            break
 
     # 记录日志
     log_service.log(
         ai_app_type=request.ai_app_type,
         session_id=request.session_id,
-        window_id=request.window_id,
-        process_name=process_name,
+        window_id=first_window_id,
+        process_name=first_process_name,
         instruction="batch",
         params={
             "instructions": [
@@ -172,9 +177,7 @@ async def batch_execute(request: BatchRequest, req: Request = None, authorizatio
 async def _execute_single_instruction(
     ai_app_type: str,
     session_id: str,
-    window_id: int,
     instruction,
-    main_window_id: int = None,
     is_last: bool = False,
     client_ip: str = "unknown"
 ) -> dict:
@@ -188,6 +191,23 @@ async def _execute_single_instruction(
 
     action = instruction.action
     params = instruction.params
+
+    # ============ 桌面级指令 ============
+    if action.startswith("desktop_"):
+        return _execute_desktop_instruction(
+            ai_app_type, session_id, action, params, client_ip
+        )
+
+    # ============ 窗口级指令 ============
+
+    # 不需要 window_id 的指令
+    NO_WINDOW_ACTIONS = {"wait", "crop_zoom_screenshot"}
+
+    window_id = params.get("window_id")
+    if window_id is None and action not in NO_WINDOW_ACTIONS:
+        return {"success": False, "message": "window_id is required for window-level instructions"}
+    main_window_id = params.get("main_window_id")
+
     action_method = params.get("action_method", "background")
 
     # 托管模式下强制转为物理操作，跳过确认
@@ -199,12 +219,12 @@ async def _execute_single_instruction(
     _success_msg = "Command sent."
 
     # 获取进程信息（所有模式都需要，用于禁止检查）
-    process_info = process_service.get_process_by_window_id(window_id)
-    if not process_info:
+    process_info = process_service.get_process_by_window_id(window_id) if window_id is not None else None
+    if window_id is not None and not process_info:
         return {"success": False, "message": "Window not found. The window may have been closed. Use get_window_list to get a valid window_id. Refer to skill.md for troubleshooting."}
 
     # 检查进程是否被禁止（所有模式都生效）
-    if config_service.is_process_blocked(process_info.process_name):
+    if process_info and config_service.is_process_blocked(process_info.process_name):
         return {"success": False, "message": "Process is blocked. This process is in the blocked list and operations are not allowed. Refer to skill.md for troubleshooting."}
 
     # hijack 模式需要用户确认（托管模式下跳过）
@@ -266,7 +286,7 @@ async def _execute_single_instruction(
         confirm_result = ConfirmService.request_confirm(
             ai_app_type=ai_app_type,
             window_title=window_title,
-            process_name=process_info.process_name,
+            process_name=process_info.process_name if process_info else "",
             operation=operation,
             operation_detail=operation_detail
         )
@@ -683,5 +703,290 @@ async def _execute_single_instruction(
         else:
             return {"success": False, "message": f"Unknown instruction type: {action}"}
 
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
+# ============ 桌面级 batch 指令执行 ============
+
+def _execute_desktop_instruction(
+    ai_app_type: str,
+    session_id: str,
+    action: str,
+    params: dict,
+    client_ip: str = "unknown"
+) -> dict:
+    """执行单条桌面级 batch 指令"""
+    from app.services.config_service import config_service
+    from app.services.confirm_service import ConfirmService
+    from app.platform.windows.desktop_capture import (
+        get_monitors,
+        desktop_percent_to_screen,
+        desktop_click,
+        desktop_double_click,
+        desktop_right_click,
+        desktop_drag,
+        desktop_scroll,
+        desktop_input_text,
+        desktop_press_key,
+        desktop_hover,
+        capture_monitor,
+    )
+    from app.core.grid import GridRenderer
+    from app.utils.image import (
+        compress_image, image_to_base64, save_image,
+        generate_desktop_screenshot_filename, generate_data_dir,
+    )
+    import os
+    import time
+
+    monitor_index = params.get("monitor_index")
+    if monitor_index is None:
+        return {"success": False, "message": "monitor_index is required for desktop instructions"}
+
+    # hijack 确认（delegated 模式自动跳过，截图类不需要确认）
+    delegated_active = config_service.is_delegated_active()
+    need_confirm = action not in ("desktop_screenshot",)
+    if need_confirm and not delegated_active:
+        operation_name = action.replace("desktop_", "").replace("_", " ").title()
+        window_title = f"Desktop (Monitor {monitor_index})"
+        confirm_result = ConfirmService.request_confirm(
+            ai_app_type=ai_app_type,
+            window_title=window_title,
+            process_name="",
+            operation=operation_name,
+            operation_detail=f"Monitor {monitor_index}",
+            show_remember=False,
+        )
+        if not confirm_result.confirmed:
+            return {"success": False, "message": "User denied"}
+
+    restore = not delegated_active
+    start_time = time.time()
+
+    # 验证 monitor_index
+    monitors = get_monitors()
+    if monitor_index < 0 or monitor_index >= len(monitors):
+        return {"success": False, "message": "Monitor not found. Call GET /api/desktop_get_monitors_list for valid indices."}
+
+    try:
+        # ---- desktop_screenshot ----
+        if action == "desktop_screenshot":
+            config = config_service.get()
+            image = capture_monitor(monitor_index)
+
+            image = compress_image(
+                image,
+                quality=config.screenshot.image_quality,
+                max_width=config.screenshot.max_image_width
+            )
+
+            coord_type = params.get("coordinate_type", "grid")
+            effective_grid = None
+            effective_coordinate = None
+            renderer = None
+
+            if coord_type != "no":
+                params_result = screenshot_params_service.build_from_dict(params, config, image.size)
+                effective_grid = params_result.grid
+                effective_coordinate = params_result.coordinate
+                renderer = GridRenderer(
+                    density_x=effective_grid["density_x"],
+                    density_y=effective_grid["density_y"],
+                    grid_opacity=effective_grid["opacity"],
+                    grid_color=effective_grid["color"],
+                    number_density=effective_coordinate["number_density"],
+                    number_decimal=effective_coordinate["number_decimal"],
+                    number_size=effective_coordinate["number_size"],
+                    number_color=effective_coordinate["number_color"],
+                    number_opacity=effective_coordinate["number_opacity"],
+                    number_stroke_width=effective_coordinate["number_stroke_width"],
+                    number_stroke_color=effective_coordinate["number_stroke_color"],
+                    color_mode=params_result.color_mode
+                )
+                image = renderer.draw_grid(image)
+
+            # 绘制标记
+            marker_params = params.get("marker")
+            if marker_params:
+                marker_list = marker_params if isinstance(marker_params, list) else [marker_params]
+                if renderer is None:
+                    renderer = GridRenderer()
+                for mp in marker_list:
+                    image = renderer.draw_marker(
+                        image,
+                        x=mp["x"], y=mp["y"],
+                        ring_radius=mp.get("ring_radius", 12),
+                        ring_line_width=mp.get("ring_line_width", 2),
+                        ring_color=mp.get("ring_color", "#FF0000"),
+                        dot_radius=mp.get("dot_radius", 3),
+                        dot_color=mp.get("dot_color", "#FF0000")
+                    )
+
+            data_dir = generate_data_dir("data", ai_app_type, session_id)
+            filename = generate_desktop_screenshot_filename()
+            image_path = os.path.join(data_dir, filename)
+            save_image(image, image_path, config.screenshot.image_quality)
+
+            image_base64 = image_to_base64(image)
+            is_local = client_ip in {"127.0.0.1", "::1", "localhost"}
+            if is_local:
+                result_data = {"image_path": os.path.abspath(image_path)}
+            else:
+                result_data = {"image_base64": image_base64}
+
+            msg = "Desktop screenshot successful."
+            if marker_params:
+                msg += " Marker drawn."
+
+            duration_ms = int((time.time() - start_time) * 1000)
+            log_service.log(
+                ai_app_type=ai_app_type, session_id=session_id,
+                window_id=None, process_name=None,
+                instruction="desktop_screenshot", params=params,
+                result={"success": True, "message": msg},
+                duration_ms=duration_ms, client_ip=client_ip,
+                monitor_index=monitor_index,
+            )
+            return {"success": True, "message": msg, "data": result_data}
+
+        # ---- desktop_click / desktop_double_click / desktop_right_click ----
+        elif action in ("desktop_click", "desktop_double_click", "desktop_right_click"):
+            screen_x, screen_y = desktop_percent_to_screen(monitor_index, params["x"], params["y"])
+            action_fn = {
+                "desktop_click": desktop_click,
+                "desktop_double_click": desktop_double_click,
+                "desktop_right_click": desktop_right_click,
+            }[action]
+            inject_result = action_fn(screen_x, screen_y, restore=restore)
+
+            duration_ms = int((time.time() - start_time) * 1000)
+            log_service.log(
+                ai_app_type=ai_app_type, session_id=session_id,
+                window_id=None, process_name=None,
+                instruction=action, params=params,
+                result={"success": inject_result.success, "message": inject_result.error or "OK"},
+                duration_ms=duration_ms, client_ip=client_ip,
+                monitor_index=monitor_index,
+            )
+            if inject_result.success:
+                return {"success": True, "message": "Command sent."}
+            else:
+                return {"success": False, "message": inject_result.error}
+
+        # ---- desktop_drag ----
+        elif action == "desktop_drag":
+            end_monitor_index = params.get("end_monitor_index", monitor_index)
+            if end_monitor_index < 0 or end_monitor_index >= len(monitors):
+                return {"success": False, "message": "end_monitor_index not found."}
+
+            start_x, start_y = desktop_percent_to_screen(monitor_index, params["start_x"], params["start_y"])
+            end_x, end_y = desktop_percent_to_screen(end_monitor_index, params["end_x"], params["end_y"])
+            dur = params.get("duration_ms", 500)
+            inject_result = desktop_drag(start_x, start_y, end_x, end_y, dur, restore=restore)
+
+            duration_ms = int((time.time() - start_time) * 1000)
+            log_service.log(
+                ai_app_type=ai_app_type, session_id=session_id,
+                window_id=None, process_name=None,
+                instruction="desktop_drag", params=params,
+                result={"success": inject_result.success, "message": inject_result.error or "OK"},
+                duration_ms=duration_ms, client_ip=client_ip,
+                monitor_index=monitor_index,
+            )
+            if inject_result.success:
+                return {"success": True, "message": "Command sent."}
+            else:
+                return {"success": False, "message": inject_result.error}
+
+        # ---- desktop_scroll ----
+        elif action == "desktop_scroll":
+            screen_x, screen_y = desktop_percent_to_screen(monitor_index, params["x"], params["y"])
+            delta = params.get("delta", 0)
+            inject_result = desktop_scroll(screen_x, screen_y, delta, restore=restore)
+
+            duration_ms = int((time.time() - start_time) * 1000)
+            log_service.log(
+                ai_app_type=ai_app_type, session_id=session_id,
+                window_id=None, process_name=None,
+                instruction="desktop_scroll", params=params,
+                result={"success": inject_result.success, "message": inject_result.error or "OK"},
+                duration_ms=duration_ms, client_ip=client_ip,
+                monitor_index=monitor_index,
+            )
+            if inject_result.success:
+                return {"success": True, "message": "Command sent."}
+            else:
+                return {"success": False, "message": inject_result.error}
+
+        # ---- desktop_input_text ----
+        elif action == "desktop_input_text":
+            screen_x, screen_y = desktop_percent_to_screen(monitor_index, params["x"], params["y"])
+            inject_result = desktop_input_text(screen_x, screen_y, params["text"], restore=restore)
+
+            duration_ms = int((time.time() - start_time) * 1000)
+            log_service.log(
+                ai_app_type=ai_app_type, session_id=session_id,
+                window_id=None, process_name=None,
+                instruction="desktop_input_text", params=params,
+                result={"success": inject_result.success, "message": inject_result.error or "OK"},
+                duration_ms=duration_ms, client_ip=client_ip,
+                monitor_index=monitor_index,
+            )
+            if inject_result.success:
+                return {"success": True, "message": "Command sent."}
+            else:
+                return {"success": False, "message": inject_result.error}
+
+        # ---- desktop_press_key ----
+        elif action == "desktop_press_key":
+            screen_x, screen_y = None, None
+            x_pct = params.get("x")
+            y_pct = params.get("y")
+            if x_pct is not None and y_pct is not None:
+                screen_x, screen_y = desktop_percent_to_screen(monitor_index, x_pct, y_pct)
+
+            dur = params.get("duration_ms", 0)
+            inject_result = desktop_press_key(params["keys"], dur, screen_x=screen_x, screen_y=screen_y)
+
+            duration_ms = int((time.time() - start_time) * 1000)
+            log_service.log(
+                ai_app_type=ai_app_type, session_id=session_id,
+                window_id=None, process_name=None,
+                instruction="desktop_press_key", params=params,
+                result={"success": inject_result.success, "message": inject_result.error or "OK"},
+                duration_ms=duration_ms, client_ip=client_ip,
+                monitor_index=monitor_index,
+            )
+            if inject_result.success:
+                return {"success": True, "message": "Command sent."}
+            else:
+                return {"success": False, "message": inject_result.error}
+
+        # ---- desktop_hover ----
+        elif action == "desktop_hover":
+            screen_x, screen_y = desktop_percent_to_screen(monitor_index, params["x"], params["y"])
+            dur = params.get("duration_ms", 1000)
+            inject_result = desktop_hover(screen_x, screen_y, dur, restore=restore)
+
+            duration_ms = int((time.time() - start_time) * 1000)
+            log_service.log(
+                ai_app_type=ai_app_type, session_id=session_id,
+                window_id=None, process_name=None,
+                instruction="desktop_hover", params=params,
+                result={"success": inject_result.success, "message": inject_result.error or "OK"},
+                duration_ms=duration_ms, client_ip=client_ip,
+                monitor_index=monitor_index,
+            )
+            if inject_result.success:
+                return {"success": True, "message": "Command sent."}
+            else:
+                return {"success": False, "message": inject_result.error}
+
+        else:
+            return {"success": False, "message": f"Unknown desktop instruction type: {action}"}
+
+    except IndexError:
+        return {"success": False, "message": "Monitor not found. Call GET /api/desktop_get_monitors_list for valid indices."}
     except Exception as e:
         return {"success": False, "message": str(e)}

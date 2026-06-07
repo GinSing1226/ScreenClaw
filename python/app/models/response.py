@@ -44,6 +44,7 @@ class ScreenshotData(BaseModel):
     """截图数据"""
     image_path: Optional[str] = Field(None, description="图片本地路径")
     image_base64: Optional[str] = Field(None, description="图片base64编码")
+    window_info: Optional[Dict[str, Any]] = Field(None, description="窗口原始信息（source_width/source_height/scale_factor）")
     requested_params: Optional[Dict[str, Any]] = Field(None, description="请求参数摘要")
     effective_params: Optional[Dict[str, Any]] = Field(None, description="实际生效完整参数")
     effective_grid: Optional[Dict[str, Any]] = Field(None, description="实际生效网格参数")
@@ -51,7 +52,7 @@ class ScreenshotData(BaseModel):
     effective_marker: Optional[List[Dict[str, Any]]] = Field(None, description="实际生效标记点参数")
     effective_crop: Optional[Dict[str, Any]] = Field(None, description="实际生效裁剪参数")
     source_image_path: Optional[str] = Field(None, description="源图片路径")
-    adaptive_adjustments: List[str] = Field(default_factory=list, description="自适应参数调整说明")
+    adaptive_adjustments: Optional[List[str]] = Field(default=None, description="自适应参数调整说明")
 
 
 class ScreenshotResponse(BaseResponse):
@@ -132,6 +133,7 @@ ERROR_CODES = {
     "INVALID_PARAMS": {"zh": "参数无效", "en": "Invalid parameters. Next: fix the request fields and retry. See the endpoint reference document."},
     "INTERNAL_ERROR": {"zh": "内部错误", "en": "Internal error. Next: check service logs and retry. See references/api/health.md."},
     "UNSUPPORTED_MODE": {"zh": "不支持的操作模式", "en": "Unsupported operation mode for this action. Next: use a supported action_method for this endpoint. See the endpoint reference document."},
+    "MONITOR_NOT_FOUND": {"zh": "显示器不存在", "en": "Monitor not found. Next: call GET /api/desktop_get_monitors_list and use a valid monitor_index."},
     "FILE_NOT_FOUND": {"zh": "图片文件不存在", "en": "Image file not found. Next: use the image_path returned by screenshot or pass source_image_base64. See references/api/crop_zoom_screenshot.md."},
     "SELF_CHECK_REQUIRED": {"zh": "需要截图自检", "en": "Self-check required."},
     "SELF_CHECK_NOT_ALLOWED": {"zh": "当前不应传入自检", "en": "Self-check is not expected now. Next: retry without self_check. See references/api/screenshot.md."},

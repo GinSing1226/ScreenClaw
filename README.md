@@ -52,10 +52,18 @@ AI 应用通过 HTTP API 可以：
 - 无需虚拟机
 - 无需专门 UI 大模型就能操作手机 APP
 
+### 🖥️ 桌面级截图+操作
+- 直接对桌面截图和操作，不绑定进程，可操作桌面图标、任务栏、开始菜单等任何可见内容
+- 支持多显示器，每个显示器独立坐标空间，支持跨屏拖拽
+- 操作方式与窗口级一致，共用网格绘制和百分比坐标体系
+
+### 🎬 录制+沉淀场景
+- 人工带跑：通过快捷键或托盘菜单启动录制，人工操作，后台自自动捕获每步截图、坐标和操作类型。
+- AI沉淀：调用screenclaw技能，给出录制产物文件夹（程序根目录record下），让AI将产物沉淀为场景模板
+
 ### 💎 沉淀复用
-- 支持将成功的任务流程沉淀为场景模板，下次直接复用
-- 接入 OpenClaw 等个人 AI 助手后，个性化数据在本地留存
-- AI 会越来越懂你，效率越来越高
+- AI操作+AI沉淀：AI自动操作完后，支持将成功的任务流程沉淀为场景模板，下次直接复用。也可以优化历史模板。
+- 坐标适配检测：使用模板时，若应用尺寸与模板不符，支持按比例调整坐标，尝试复用
 
 ### 🔒 安全可控
 - Token 认证机制
@@ -124,6 +132,8 @@ npx skills add GinSing1226/ScreenClaw
 
 ## 📚 API 清单
 
+### 窗口级 API
+
 | API | 用途 | 说明 |
 |-----|------|------|
 | `health` | 验证服务是否可连接 | 操作前的第一步检查 |
@@ -144,6 +154,31 @@ npx skills add GinSing1226/ScreenClaw
 | `scroll_screenshot` | 滚动长截图 | 自动滚动拼接，生成长图 |
 | `crop_zoom_screenshot` | 裁剪放大 | 对已有截图局部放大，看清细节 |
 | `delegated` | 进入/退出托管模式 | 用户主动要求完全控制时 |
+
+### 桌面级 API
+
+桌面级操作以**显示器**为单位，不绑定窗口进程，可操作桌面图标、任务栏、开始菜单等。固定使用 hijack 模式。
+
+| API | 用途 | 说明 |
+|-----|------|------|
+| `desktop_get_monitors_list` | 枚举显示器 | 获取索引、名称、分辨率、是否主屏 |
+| `desktop_screenshot` | 桌面截图 | 指定显示器截图，叠加网格和标记 |
+| `desktop_click` | 桌面单击 | 点击桌面元素 |
+| `desktop_double_click` | 桌面双击 | 双击桌面元素 |
+| `desktop_right_click` | 桌面右键 | 右键点击桌面元素 |
+| `desktop_drag` | 桌面拖拽 | 支持同屏和跨屏拖拽 |
+| `desktop_scroll` | 桌面滚动 | 滚轮操作 |
+| `desktop_input_text` | 桌面文本输入 | 剪贴板粘贴输入 |
+| `desktop_press_key` | 桌面按键 | 键盘快捷键 |
+| `desktop_hover` | 桌面悬浮 | 触发悬浮提示 |
+
+### 录制 API
+
+| API | 用途 | 说明 |
+|-----|------|------|
+| `recording/start` | 开始录制 | 通过快捷键或 API 触发 |
+| `recording/stop` | 停止录制 | 停止并保存产物到 record/ 目录 |
+| `recording/status` | 查询录制状态 | 当前是否录制中、步骤数等 |
 
 ---
 
@@ -492,6 +527,9 @@ curl -X POST http://127.0.0.1:12261/api/scroll_screenshot \
 ### 复杂任务自动化
 专用的 UI 大模型通常参数量较低，难以理解复杂任务，难以尝试长时程执行任务。而 ScreenClaw 能让 SOTA 级别的多模态大模型（如 GPT-4V、Claude 3.5 Sonnet）自动化操作软件。
 
+### 录制操作 → 沉淀模板 → 自动复用
+用户手动操作一遍，录制每步截图和操作，AI 分析后沉淀为场景模板。下次 AI 自动执行相同任务，并支持坐标适配检测和模板优化。
+
 ### 与其他工具对比
 
 | 场景 | 推荐工具 | ScreenClaw 作用 |
@@ -552,8 +590,10 @@ curl -X POST http://127.0.0.1:12261/api/scroll_screenshot \
 |------|------|
 | 前端 | Tauri 2.0 + Vue 3 + TypeScript |
 | 后端 | Python 3.11 + FastAPI + Uvicorn |
-| 截图 | pywin32 / mss |
+| 窗口截图 | pywin32 (PrintWindow) |
+| 桌面截图 | mss |
 | 操作注入 | pywin32 (PostMessage) / pyautogui (SendInput) |
+| 操作录制 | Windows Hook (WH_MOUSE_LL / WH_KEYBOARD_LL) |
 | 网格绘制 | Pillow (PIL) |
 
 ---
@@ -564,9 +604,9 @@ curl -X POST http://127.0.0.1:12261/api/scroll_screenshot \
 screenClaw/
 ├── python/                   # Python 后端
 │   ├── app/
-│   │   ├── api/             # API 路由
-│   │   ├── core/            # 核心业务逻辑
-│   │   ├── platform/        # 平台适配层
+│   │   ├── api/             # API 路由（窗口级、桌面级、录制）
+│   │   ├── core/            # 核心业务逻辑（录制器等）
+│   │   ├── platform/        # 平台适配层（截图、Hook、操作注入）
 │   │   ├── models/          # 数据模型
 │   │   ├── services/        # 服务层
 │   │   ├── scripts/         # API 调用脚本
@@ -586,7 +626,13 @@ screenClaw/
 ├── skills/                  # AI Skill
 │   └── screenclaw/
 │       ├── SKILL.md         # 技能定义（完整使用指南）
+│       ├── scripts/         # 辅助脚本（coord_adapt、recording_windows 等）
 │       └── references/      # API 文档和场景模板
+│
+├── record/                  # 录制产物（自动创建，已 gitignore）
+│   └── record_YYYYMMDD_HHmmss/
+│       ├── step.json        # 录制元数据 + 步骤
+│       └── step_XXXX.png    # 步骤截图
 │
 └── data/                    # 数据目录
     └── config.json          # 配置文件（自动创建）
@@ -606,9 +652,22 @@ screenClaw/
     "port": 12261,
     "token": "your-token-here",
     "local_ip": "192.168.x.x"
+  },
+  "recording": {
+    "hotkey": "ctrl+alt+\\",
+    "scroll_merge_interval_ms": 1000
   }
 }
 ```
+
+| 配置项 | 说明 |
+|--------|------|
+| `host` | 绑定地址，0.0.0.0 允许局域网访问 |
+| `port` | HTTP 服务端口 |
+| `token` | API 认证令牌 |
+| `local_ip` | 自动检测的局域网 IP |
+| `recording.hotkey` | 录制快捷键，默认 `Ctrl+Alt+\` |
+| `recording.scroll_merge_interval_ms` | 连续滚动合并间隔（毫秒） |
 
 ### AI Skill 连接配置
 位于技能目录 `{skill-dir}/references/config.md`，用于 AI 应用连接 ScreenClaw 服务。
@@ -623,13 +682,6 @@ screenClaw/
   }
 }
 ```
-
-| 配置项 | 说明 |
-|--------|------|
-| `host` | 绑定地址，0.0.0.0 允许局域网访问 |
-| `port` | HTTP 服务端口 |
-| `token` | API 认证令牌 |
-| `local_ip` | 自动检测的局域网 IP |
 
 ---
 
@@ -652,7 +704,6 @@ screenClaw/
 
 - 🎯 **提高识别率** — 通过技能优化和场景模板沉淀，提升多模态大模型的初次识别准确率
 - 🔄 **更多 RPA 动作** — 扩展支持的自动化操作类型，覆盖更多使用场景
-- 🖥️ **桌面级操作** — 直接对桌面截图和操作，不绑定进程，可操作任何可见内容（会抢夺用户鼠标和键盘）
 - 🧠 **坐标准确性提升** — 利用轻度 OCR 或无障碍树技术，进一步提高坐标准确性
 - 📦 **场景模板库** — 封装更多常用软件的场景模板，开箱即用
 
