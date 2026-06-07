@@ -1,0 +1,2 @@
+D:\AIcode\screenClaw\src-wincapture\obj\Debug\net9.0-windows10.0.19041.0\src-wincapture.csproj.AssemblyReference.cache
+D:\AIcode\screenClaw\src-wincapture\obj\Debug\net9.0-windows10.0.19041.0\src-wincapture.GeneratedMSBuildEditorConfig.editorconfig
