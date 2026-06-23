@@ -1,6 +1,6 @@
 ---
 name: wechat-wiki
-description: 微信桌面版（windows）应用公共知识。英文名WeChat，中文名微信，进程名WeChat.exe。
+description: 微信桌面版（windows）应用公共知识。英文名WeChat，中文名微信，进程名Weixin.exe。
 ---
 
 # 微信 wiki
